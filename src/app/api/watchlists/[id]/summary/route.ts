@@ -16,6 +16,17 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Verify watchlist ownership explicitly
+    const { data: watchlist, error: watchlistError } = await supabase
+      .from('watchlists')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (watchlistError || !watchlist) {
+      return NextResponse.json({ error: 'Watchlist not found' }, { status: 404 });
+    }
+
     // Get watchlist items with stock info
     const { data: items, error: itemsError } = await supabase
       .from('watchlist_items')
@@ -35,95 +46,85 @@ export async function GET(
     const stockIds = items.map((item) => item.stock_id);
     const admin = createAdminClient();
 
-    // Get the latest trading date from stock_prices for these stocks
-    const { data: latestDateRow } = await admin
-      .from('stock_prices')
-      .select('date')
-      .in('stock_id', stockIds)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const latestDate = latestDateRow?.date;
-
-    // Fetch latest stock prices for all stocks on the latest date
-    const pricesMap: Record<string, { close: number | null; spread: number | null; volume: number | null }> = {};
-    if (latestDate) {
-      const { data: prices } = await admin
+    // Fetch prices, PER, and institutional data in parallel
+    async function fetchPrices(adminClient: ReturnType<typeof createAdminClient>, ids: string[]) {
+      const map: Record<string, { close: number | null; spread: number | null; volume: number | null }> = {};
+      const { data: latestRow } = await adminClient
         .from('stock_prices')
-        .select('stock_id, close, spread, volume')
-        .in('stock_id', stockIds)
-        .eq('date', latestDate);
-
-      if (prices) {
-        for (const p of prices) {
-          pricesMap[p.stock_id] = {
-            close: p.close,
-            spread: p.spread,
-            volume: p.volume,
-          };
+        .select('date')
+        .in('stock_id', ids)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestRow?.date) {
+        const { data: prices } = await adminClient
+          .from('stock_prices')
+          .select('stock_id, close, spread, volume')
+          .in('stock_id', ids)
+          .eq('date', latestRow.date);
+        if (prices) {
+          for (const p of prices) {
+            map[p.stock_id] = { close: p.close, spread: p.spread, volume: p.volume };
+          }
         }
       }
+      return map;
     }
 
-    // Get the latest PER date for these stocks
-    const { data: latestPerDateRow } = await admin
-      .from('stock_per')
-      .select('date')
-      .in('stock_id', stockIds)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const latestPerDate = latestPerDateRow?.date;
-
-    // Fetch latest stock_per for all stocks
-    const perMap: Record<string, { per: number | null; pbr: number | null; dividend_yield: number | null }> = {};
-    if (latestPerDate) {
-      const { data: perData } = await admin
+    async function fetchPer(adminClient: ReturnType<typeof createAdminClient>, ids: string[]) {
+      const map: Record<string, { per: number | null; pbr: number | null; dividend_yield: number | null }> = {};
+      const { data: latestRow } = await adminClient
         .from('stock_per')
-        .select('stock_id, per, pbr, dividend_yield')
-        .in('stock_id', stockIds)
-        .eq('date', latestPerDate);
-
-      if (perData) {
-        for (const p of perData) {
-          perMap[p.stock_id] = {
-            per: p.per,
-            pbr: p.pbr,
-            dividend_yield: p.dividend_yield,
-          };
+        .select('date')
+        .in('stock_id', ids)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestRow?.date) {
+        const { data: perData } = await adminClient
+          .from('stock_per')
+          .select('stock_id, per, pbr, dividend_yield')
+          .in('stock_id', ids)
+          .eq('date', latestRow.date);
+        if (perData) {
+          for (const p of perData) {
+            map[p.stock_id] = { per: p.per, pbr: p.pbr, dividend_yield: p.dividend_yield };
+          }
         }
       }
+      return map;
     }
 
-    // Get the latest institutional_investors date for these stocks
-    const { data: latestIiDateRow } = await admin
-      .from('institutional_investors')
-      .select('date')
-      .in('stock_id', stockIds)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const latestIiDate = latestIiDateRow?.date;
-
-    // Fetch institutional investors net for the latest date (sum of buy - sell across investor types)
-    const iiNetMap: Record<string, number> = {};
-    if (latestIiDate) {
-      const { data: iiData } = await admin
+    async function fetchInstitutional(adminClient: ReturnType<typeof createAdminClient>, ids: string[]) {
+      const map: Record<string, number> = {};
+      const { data: latestRow } = await adminClient
         .from('institutional_investors')
-        .select('stock_id, buy, sell')
-        .in('stock_id', stockIds)
-        .eq('date', latestIiDate);
-
-      if (iiData) {
-        for (const row of iiData) {
-          const net = (row.buy ?? 0) - (row.sell ?? 0);
-          iiNetMap[row.stock_id] = (iiNetMap[row.stock_id] ?? 0) + net;
+        .select('date')
+        .in('stock_id', ids)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestRow?.date) {
+        const { data: iiData } = await adminClient
+          .from('institutional_investors')
+          .select('stock_id, buy, sell')
+          .in('stock_id', ids)
+          .eq('date', latestRow.date);
+        if (iiData) {
+          for (const row of iiData) {
+            const net = (row.buy ?? 0) - (row.sell ?? 0);
+            map[row.stock_id] = (map[row.stock_id] ?? 0) + net;
+          }
         }
       }
+      return map;
     }
+
+    const [pricesMap, perMap, iiNetMap] = await Promise.all([
+      fetchPrices(admin, stockIds),
+      fetchPer(admin, stockIds),
+      fetchInstitutional(admin, stockIds),
+    ]);
 
     // Build summary response
     const data = items.map((item) => {

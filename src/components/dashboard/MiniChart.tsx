@@ -176,6 +176,10 @@ export function MiniChart({ stockId }: MiniChartProps) {
 
     return () => {
       cancelled = true;
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
     };
   }, [stockId]);
 
@@ -199,15 +203,6 @@ export function MiniChart({ stockId }: MiniChartProps) {
     };
   }, []);
 
-  // Cleanup chart on unmount
-  useEffect(() => {
-    return () => {
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-      }
-    };
-  }, []);
 
   if (!stockId) {
     return (

@@ -10,10 +10,14 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get start of today in ISO format (UTC)
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayISO = todayStart.toISOString();
+    // Get start of today in Taiwan time (UTC+8)
+    const now = new Date();
+    const taiwanOffset = 8 * 60; // UTC+8 in minutes
+    const taiwanMs = now.getTime() + (taiwanOffset + now.getTimezoneOffset()) * 60000;
+    const taiwanNow = new Date(taiwanMs);
+    taiwanNow.setHours(0, 0, 0, 0);
+    // Convert back to UTC for the query
+    const todayISO = new Date(taiwanNow.getTime() - (taiwanOffset + now.getTimezoneOffset()) * 60000).toISOString();
 
     const { data, error } = await supabase
       .from('alert_history')

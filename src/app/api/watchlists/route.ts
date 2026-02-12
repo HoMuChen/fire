@@ -12,7 +12,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('watchlists')
-      .select('*')
+      .select('id, name, sort_order, created_at')
       .order('sort_order', { ascending: true });
 
     if (error) {

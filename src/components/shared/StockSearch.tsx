@@ -18,7 +18,7 @@ interface StockSearchResult {
 }
 
 interface StockSearchProps {
-  onSelect: (stockId: string, stockName: string) => void;
+  onSelect: (stockId: string) => void;
 }
 
 export function StockSearch({ onSelect }: StockSearchProps) {
@@ -96,7 +96,7 @@ export function StockSearch({ onSelect }: StockSearchProps) {
                 key={stock.stock_id}
                 value={stock.stock_id}
                 onSelect={() => {
-                  onSelect(stock.stock_id, stock.stock_name);
+                  onSelect(stock.stock_id);
                   setQuery('');
                   setResults([]);
                 }}

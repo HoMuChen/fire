@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { MarketOverview } from './MarketOverview';
 import { AlertCenter } from './AlertCenter';
 import { WatchlistTable } from './WatchlistTable';
@@ -14,6 +15,7 @@ interface Watchlist {
 }
 
 export function DashboardClient({ watchlists }: { watchlists: Watchlist[] }) {
+  const router = useRouter();
   const [activeStockId, setActiveStockId] = useState<string | null>(null);
 
   return (
@@ -31,6 +33,7 @@ export function DashboardClient({ watchlists }: { watchlists: Watchlist[] }) {
           <WatchlistTable
             watchlists={watchlists}
             onStockHover={setActiveStockId}
+            onWatchlistsChange={() => router.refresh()}
           />
         </div>
 
