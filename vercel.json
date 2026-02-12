@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/sync/stock-init",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/sync/daily",
+      "schedule": "0 18 * * 1-5"
+    },
+    {
+      "path": "/api/sync/check-alerts",
+      "schedule": "30 18 * * 1-5"
+    }
+  ]
+}
