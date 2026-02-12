@@ -2,6 +2,7 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StockHeader } from './StockHeader';
+import { KLineChart } from './KLineChart';
 
 export interface StockInfo {
   stock_id: string;
@@ -31,10 +32,8 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
     <div className="p-4 space-y-4">
       <StockHeader stockInfo={stockInfo} />
 
-      {/* K-Line chart placeholder */}
-      <div className="rounded-lg border border-[#1E293B] bg-[#0F172A] p-4 h-[400px] flex items-center justify-center text-[#94A3B8]">
-        K-Line Chart (Coming Soon)
-      </div>
+      {/* K-Line chart */}
+      <KLineChart stockId={stockInfo.stock_id} />
 
       <Tabs defaultValue="fundamentals" className="w-full">
         <TabsList className="bg-[#1E293B] border-[#1E293B]">
