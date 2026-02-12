@@ -670,8 +670,9 @@ export function KLineChart({ stockId }: KLineChartProps) {
             }
           } catch {
             // ignore
+          } finally {
+            syncingRef.current = false;
           }
-          syncingRef.current = false;
         });
 
         // Sync from subplots back to main (one-way guard)
@@ -691,8 +692,9 @@ export function KLineChart({ stockId }: KLineChartProps) {
             }
           } catch {
             // ignore
+          } finally {
+            syncingRef.current = false;
           }
-          syncingRef.current = false;
         };
 
         if (rsiChartRef.current) {
