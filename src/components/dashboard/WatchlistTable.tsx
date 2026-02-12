@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Settings, Plus, Trash2, X } from 'lucide-react';
+import { Settings, Plus, Trash2, X, ChevronDown } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Table,
@@ -14,14 +14,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
 import { NumberDisplay } from '@/components/shared/NumberDisplay';
 import { StockSearch } from '@/components/shared/StockSearch';
+import { cn } from '@/lib/utils';
 
 interface Watchlist {
   id: string;
@@ -67,12 +68,14 @@ export function WatchlistTable({
   const [activeTab, setActiveTab] = useState<string>(watchlists[0]?.id ?? '');
   const [summaryData, setSummaryData] = useState<StockSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [newWatchlistName, setNewWatchlistName] = useState('');
   const [creatingWatchlist, setCreatingWatchlist] = useState(false);
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [deletingWatchlist, setDeletingWatchlist] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
 
   // Fetch summary for the active watchlist
   const fetchSummary = useCallback(async (watchlistId: string) => {
@@ -149,9 +152,6 @@ export function WatchlistTable({
   // Delete the active watchlist
   async function handleDeleteWatchlist() {
     if (!activeTab) return;
-    const confirmed = window.confirm('確定要刪除此自選清單嗎？此操作無法復原。');
-    if (!confirmed) return;
-
     setDeletingWatchlist(true);
     try {
       const res = await fetch(`/api/watchlists/${activeTab}`, {
@@ -159,7 +159,8 @@ export function WatchlistTable({
       });
       if (res.ok) {
         onWatchlistsChange?.();
-        setDialogOpen(false);
+        setSheetOpen(false);
+        setConfirmDelete(false);
       }
     } catch {
       // silently fail
@@ -202,13 +203,176 @@ export function WatchlistTable({
     }
   }
 
-  // Open management dialog
-  function openManageDialog() {
-    setDialogOpen(true);
+  // Open management sheet
+  function openManageSheet() {
+    setSheetOpen(true);
+    setConfirmDelete(false);
+    setSettingsExpanded(false);
     if (activeTab) {
       fetchItems(activeTab);
     }
   }
+
+  const activeWatchlistName = watchlists.find((w) => w.id === activeTab)?.name;
+
+  // Shared Sheet content
+  const sheetContent = (
+    <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <SheetContent
+        side="right"
+        className="flex h-full w-[380px] flex-col border-[#1E293B] bg-[#0F172A] p-0 sm:max-w-[380px]"
+      >
+        <SheetHeader className="border-b border-[#1E293B] px-4 py-4">
+          <SheetTitle className="text-[#F8FAFC]">
+            {activeWatchlistName ? `管理 — ${activeWatchlistName}` : '管理自選清單'}
+          </SheetTitle>
+          <SheetDescription className="text-[#94A3B8]">
+            搜尋並新增股票，或管理清單設定
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Primary: Add stock search */}
+          {activeTab && (
+            <div className="border-b border-[#1E293B] px-4 py-3">
+              <StockSearch onSelect={handleAddStock} />
+            </div>
+          )}
+
+          {/* Stock list */}
+          {activeTab && (
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wider text-[#64748B]">
+                  清單股票
+                </span>
+                <span className="text-xs text-[#64748B]">
+                  {loadingItems ? '...' : `${watchlistItems.length} 檔`}
+                </span>
+              </div>
+              {loadingItems ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-9 animate-pulse rounded-md bg-[#1E293B]" />
+                  ))}
+                </div>
+              ) : watchlistItems.length === 0 ? (
+                <div className="rounded-md border border-dashed border-[#334155] px-3 py-6 text-center text-sm text-[#64748B]">
+                  使用上方搜尋加入股票
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {watchlistItems.map((item) => {
+                    const stock = item.stocks as unknown as {
+                      stock_id: string;
+                      stock_name: string;
+                    } | null;
+                    return (
+                      <div
+                        key={item.id}
+                        className="group flex items-center justify-between rounded-md px-3 py-2 transition-colors hover:bg-[#1E293B]"
+                      >
+                        <div className="text-sm text-[#F8FAFC]">
+                          <span className="font-mono text-[#94A3B8]">{item.stock_id}</span>
+                          <span className="ml-2">{stock?.stock_name ?? ''}</span>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveStock(item.stock_id)}
+                          className="cursor-pointer rounded p-1 text-[#475569] opacity-0 transition-all hover:bg-[#334155] hover:text-[#EF4444] group-hover:opacity-100"
+                          aria-label={`移除 ${item.stock_id}`}
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Secondary: Watchlist settings (collapsible) */}
+          <div className="border-t border-[#1E293B]">
+            <button
+              onClick={() => setSettingsExpanded((v) => !v)}
+              className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#64748B] transition-colors hover:text-[#94A3B8]"
+            >
+              清單設定
+              <ChevronDown
+                className={cn(
+                  'size-3.5 transition-transform duration-200',
+                  settingsExpanded && 'rotate-180'
+                )}
+              />
+            </button>
+            {settingsExpanded && (
+              <div className="space-y-3 px-4 pb-4">
+                {/* Create new watchlist */}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="新清單名稱..."
+                    value={newWatchlistName}
+                    onChange={(e) => setNewWatchlistName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCreateWatchlist();
+                    }}
+                    className="border-[#334155] bg-[#1E293B] text-[#F8FAFC] placeholder:text-[#475569]"
+                  />
+                  <Button
+                    onClick={handleCreateWatchlist}
+                    disabled={creatingWatchlist || !newWatchlistName.trim()}
+                    size="sm"
+                    className="shrink-0"
+                  >
+                    <Plus className="size-4" />
+                    建立
+                  </Button>
+                </div>
+
+                {/* Delete current watchlist */}
+                {activeTab && (
+                  <div>
+                    {!confirmDelete ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-[#64748B] hover:text-[#EF4444]"
+                        onClick={() => setConfirmDelete(true)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        刪除「{activeWatchlistName}」
+                      </Button>
+                    ) : (
+                      <div className="flex items-center gap-2 rounded-md bg-[#EF4444]/10 px-3 py-2">
+                        <span className="flex-1 text-xs text-[#EF4444]">確定刪除？此操作無法復原</span>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={handleDeleteWatchlist}
+                          disabled={deletingWatchlist}
+                        >
+                          刪除
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-[#94A3B8]"
+                          onClick={() => setConfirmDelete(false)}
+                        >
+                          取消
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
 
   if (watchlists.length === 0) {
     return (
@@ -218,42 +382,12 @@ export function WatchlistTable({
           variant="outline"
           size="sm"
           className="mt-3"
-          onClick={openManageDialog}
+          onClick={openManageSheet}
         >
           <Plus className="size-4" />
           建立自選清單
         </Button>
-
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="border-[#1E293B] bg-[#0F172A] sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="text-[#F8FAFC]">管理清單</DialogTitle>
-              <DialogDescription className="text-[#94A3B8]">
-                建立新的自選清單
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="輸入清單名稱..."
-                  value={newWatchlistName}
-                  onChange={(e) => setNewWatchlistName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleCreateWatchlist();
-                  }}
-                />
-                <Button
-                  onClick={handleCreateWatchlist}
-                  disabled={creatingWatchlist || !newWatchlistName.trim()}
-                  size="sm"
-                >
-                  <Plus className="size-4" />
-                  建立
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {sheetContent}
       </div>
     );
   }
@@ -269,7 +403,7 @@ export function WatchlistTable({
               </TabsTrigger>
             ))}
           </TabsList>
-          <Button variant="ghost" size="sm" onClick={openManageDialog}>
+          <Button variant="ghost" size="sm" onClick={openManageSheet}>
             <Settings className="size-4" />
             管理清單
           </Button>
@@ -372,114 +506,7 @@ export function WatchlistTable({
         ))}
       </Tabs>
 
-      {/* Management Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto border-[#1E293B] bg-[#0F172A] sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-[#F8FAFC]">管理清單</DialogTitle>
-            <DialogDescription className="text-[#94A3B8]">
-              建立、刪除自選清單，或新增移除股票
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-6">
-            {/* Create new watchlist */}
-            <div>
-              <h4 className="mb-2 text-sm font-medium text-[#F8FAFC]">
-                建立新清單
-              </h4>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="輸入清單名稱..."
-                  value={newWatchlistName}
-                  onChange={(e) => setNewWatchlistName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleCreateWatchlist();
-                  }}
-                />
-                <Button
-                  onClick={handleCreateWatchlist}
-                  disabled={creatingWatchlist || !newWatchlistName.trim()}
-                  size="sm"
-                >
-                  <Plus className="size-4" />
-                  建立
-                </Button>
-              </div>
-            </div>
-
-            {/* Delete current watchlist */}
-            {activeTab && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-[#F8FAFC]">
-                  刪除目前清單
-                </h4>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleDeleteWatchlist}
-                  disabled={deletingWatchlist}
-                >
-                  <Trash2 className="size-4" />
-                  刪除「{watchlists.find((w) => w.id === activeTab)?.name}」
-                </Button>
-              </div>
-            )}
-
-            {/* Add stock */}
-            {activeTab && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-[#F8FAFC]">
-                  新增股票
-                </h4>
-                <StockSearch onSelect={handleAddStock} />
-              </div>
-            )}
-
-            {/* Current stocks list */}
-            {activeTab && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-[#F8FAFC]">
-                  目前持有股票
-                </h4>
-                {loadingItems ? (
-                  <div className="text-sm text-[#94A3B8]">載入中...</div>
-                ) : watchlistItems.length === 0 ? (
-                  <div className="text-sm text-[#94A3B8]">清單中尚無股票</div>
-                ) : (
-                  <div className="space-y-1">
-                    {watchlistItems.map((item) => {
-                      const stock = item.stocks as unknown as {
-                        stock_id: string;
-                        stock_name: string;
-                      } | null;
-                      return (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between rounded-md border border-[#1E293B] bg-[#1E293B] px-3 py-2"
-                        >
-                          <div className="text-sm text-[#F8FAFC]">
-                            <span className="font-mono">{item.stock_id}</span>{' '}
-                            {stock?.stock_name ?? ''}
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => handleRemoveStock(item.stock_id)}
-                            aria-label={`移除 ${item.stock_id}`}
-                          >
-                            <X className="size-3 text-[#94A3B8] hover:text-[#EF4444]" />
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {sheetContent}
     </div>
   );
 }
