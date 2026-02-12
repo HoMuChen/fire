@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { Settings, Plus, Trash2, X } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -14,7 +13,6 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -59,16 +57,13 @@ interface WatchlistItem {
 
 interface WatchlistTableProps {
   watchlists: Watchlist[];
-  onStockHover?: (stockId: string | null) => void;
   onWatchlistsChange?: () => void;
 }
 
 export function WatchlistTable({
   watchlists,
-  onStockHover,
   onWatchlistsChange,
 }: WatchlistTableProps) {
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState<string>(watchlists[0]?.id ?? '');
   const [summaryData, setSummaryData] = useState<StockSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -306,7 +301,6 @@ export function WatchlistTable({
                       <TableHead className="text-right text-[#94A3B8]">漲跌%</TableHead>
                       <TableHead className="text-right text-[#94A3B8]">成交量(張)</TableHead>
                       <TableHead className="text-right text-[#94A3B8]">法人買賣超</TableHead>
-                      <TableHead className="text-[#94A3B8]">狀態</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -314,9 +308,7 @@ export function WatchlistTable({
                       <TableRow
                         key={stock.stock_id}
                         className="cursor-pointer border-[#334155] transition-colors hover:bg-[#334155]/50"
-                        onClick={() => router.push(`/stock/${stock.stock_id}`)}
-                        onMouseEnter={() => onStockHover?.(stock.stock_id)}
-                        onMouseLeave={() => onStockHover?.(null)}
+                        onClick={() => window.open(`/stock/${stock.stock_id}`, '_blank')}
                       >
                         <TableCell className="font-mono text-[#F8FAFC]">
                           {stock.stock_id}
@@ -368,16 +360,6 @@ export function WatchlistTable({
                             />
                           ) : (
                             <span className="text-[#94A3B8]">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {stock.sync_status && stock.sync_status !== 'synced' && (
-                            <Badge
-                              variant="outline"
-                              className="border-[#F59E0B]/30 text-[#F59E0B]"
-                            >
-                              {stock.sync_status}
-                            </Badge>
                           )}
                         </TableCell>
                       </TableRow>
