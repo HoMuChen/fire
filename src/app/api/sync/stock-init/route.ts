@@ -40,29 +40,59 @@ export async function POST(request: NextRequest) {
   const startDate = getDateYearsAgo(2);
   const endDate = formatDate(new Date());
 
-  // Pick one pending stock — prioritize stocks that are in a watchlist
-  const { data: watchlistStockIds } = await supabase
-    .from('watchlist_items')
-    .select('stock_id');
+  // Allow specifying a stock_id via query param or request body
+  const { searchParams } = new URL(request.url);
+  let targetStockId = searchParams.get('stock_id');
 
-  const wlIds = (watchlistStockIds ?? []).map((r) => r.stock_id);
+  if (!targetStockId) {
+    try {
+      const body = await request.json();
+      targetStockId = body.stock_id ?? null;
+    } catch {
+      // no body, that's fine
+    }
+  }
 
   let stock: { stock_id: string; stock_name: string } | null = null;
 
-  if (wlIds.length > 0) {
+  if (targetStockId) {
+    // Sync a specific stock (reset to pending first if needed)
     const { data } = await supabase
       .from('stocks')
       .select('stock_id, stock_name')
-      .eq('sync_status', 'pending')
-      .in('stock_id', wlIds)
-      .limit(1)
+      .eq('stock_id', targetStockId)
       .maybeSingle();
+    if (!data) {
+      return NextResponse.json({ error: `Stock ${targetStockId} not found` }, { status: 404 });
+    }
     stock = data;
-  }
+    // Force reset to pending so it can be synced
+    await supabase
+      .from('stocks')
+      .update({ sync_status: 'pending' })
+      .eq('stock_id', targetStockId);
+  } else {
+    // Auto-pick: prioritize stocks in watchlists
+    const { data: watchlistStockIds } = await supabase
+      .from('watchlist_items')
+      .select('stock_id');
 
-  // Fallback: if no watchlist stocks are pending, skip (don't sync random stocks)
-  if (!stock) {
-    return NextResponse.json({ message: 'No pending watchlist stocks to sync' });
+    const wlIds = (watchlistStockIds ?? []).map((r) => r.stock_id);
+
+    if (wlIds.length > 0) {
+      const { data } = await supabase
+        .from('stocks')
+        .select('stock_id, stock_name')
+        .eq('sync_status', 'pending')
+        .in('stock_id', wlIds)
+        .limit(1)
+        .maybeSingle();
+      stock = data;
+    }
+
+    if (!stock) {
+      return NextResponse.json({ message: 'No pending watchlist stocks to sync' });
+    }
   }
 
   // Mark as syncing
