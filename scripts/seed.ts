@@ -37,8 +37,27 @@ async function seed() {
     process.exit(1);
   }
 
-  const stocks: FinMindStockInfo[] = json.data;
-  console.log(`Fetched ${stocks.length} stocks`);
+  const rawStocks: FinMindStockInfo[] = json.data;
+  console.log(`Fetched ${rawStocks.length} raw entries`);
+
+  // Deduplicate by stock_id (FinMind returns multiple entries per stock)
+  // and filter out stock_ids longer than 10 characters
+  const stockMap = new Map<string, FinMindStockInfo>();
+  let skipped = 0;
+  for (const s of rawStocks) {
+    if (s.stock_id.length > 10) {
+      skipped++;
+      continue;
+    }
+    if (s.stock_name.length > 50) {
+      skipped++;
+      continue;
+    }
+    stockMap.set(s.stock_id, s);
+  }
+
+  const stocks = Array.from(stockMap.values());
+  console.log(`${stocks.length} unique stocks (${skipped} skipped due to length)`);
 
   // Upsert in batches of 500
   const batchSize = 500;
