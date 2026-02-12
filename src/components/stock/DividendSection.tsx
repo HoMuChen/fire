@@ -75,7 +75,7 @@ export function DividendSection({ stockId }: DividendSectionProps) {
         </thead>
         <tbody>
           {data.map((item) => (
-            <tr key={item.year} className="border-t border-[#1E293B]">
+            <tr key={item.date} className="border-t border-[#1E293B]">
               <td className="px-3 py-2 text-sm text-[#F8FAFC]">{item.year}</td>
               <td className="px-3 py-2 text-right text-sm tabular-nums text-[#F8FAFC]">
                 {item.cash_dividend.toFixed(2)}
