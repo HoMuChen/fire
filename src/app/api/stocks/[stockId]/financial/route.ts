@@ -26,6 +26,9 @@ export async function GET(
     }
 
     const { stockId } = await params;
+    if (!/^\d{4,6}$/.test(stockId)) {
+      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
+    }
     const { searchParams } = new URL(request.url);
     const quarters = parseInt(searchParams.get('quarters') ?? '8', 10);
 
@@ -43,12 +46,13 @@ export async function GET(
       .from('financial_statements')
       .select('date')
       .eq('stock_id', stockId)
-      .order('date', { ascending: false });
+      .order('date', { ascending: false })
+      .limit(quarters * 200);
 
     if (dateError) {
       console.error('Financial dates error:', dateError);
       return NextResponse.json(
-        { error: dateError.message },
+        { error: 'Failed to fetch financial data' },
         { status: 500 }
       );
     }
@@ -72,7 +76,7 @@ export async function GET(
 
     if (error) {
       console.error('Financial statements error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to fetch financial data' }, { status: 500 });
     }
 
     // Group by date, then pivot by statement_type -> item_name -> value

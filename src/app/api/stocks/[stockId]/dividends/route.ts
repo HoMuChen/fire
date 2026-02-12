@@ -19,6 +19,9 @@ export async function GET(
     }
 
     const { stockId } = await params;
+    if (!/^\d{4,6}$/.test(stockId)) {
+      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
+    }
 
     const admin = createAdminClient();
     const { data, error } = await admin
@@ -29,7 +32,7 @@ export async function GET(
 
     if (error) {
       console.error('Dividends error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to fetch dividends data' }, { status: 500 });
     }
 
     const result = (data ?? []).map((row) => {

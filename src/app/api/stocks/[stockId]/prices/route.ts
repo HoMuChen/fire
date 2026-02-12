@@ -45,6 +45,9 @@ export async function GET(
     }
 
     const { stockId } = await params;
+    if (!/^\d{4,6}$/.test(stockId)) {
+      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
+    }
     const { searchParams } = new URL(request.url);
 
     // Determine days from range (priority) or days param
@@ -85,23 +88,28 @@ export async function GET(
 
     if (error) {
       console.error('Stock prices error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to fetch stock prices' }, { status: 500 });
     }
 
     // Reverse to ascending order (oldest first) for indicator calculation
     const allRows = (data ?? []).reverse();
 
+    // Filter out rows with null OHLCV values to avoid corrupting indicator calculations
+    const validRows = allRows.filter(
+      (r) => r.close != null && r.high != null && r.low != null && r.open != null
+    );
+
     // Extract arrays for indicator calculations
-    const closes = allRows.map((r) => Number(r.close));
-    const highs = allRows.map((r) => Number(r.high));
-    const lows = allRows.map((r) => Number(r.low));
-    const dates = allRows.map((r) => r.date as string);
+    const closes = validRows.map((r) => Number(r.close));
+    const highs = validRows.map((r) => Number(r.high));
+    const lows = validRows.map((r) => Number(r.low));
+    const dates = validRows.map((r) => r.date as string);
 
     // Determine the slice start index: we want the last `days` rows
-    const sliceStart = Math.max(0, allRows.length - days);
+    const sliceStart = Math.max(0, validRows.length - days);
 
     // Build price output (only requested days)
-    const prices = allRows.slice(sliceStart).map((r) => ({
+    const prices = validRows.slice(sliceStart).map((r) => ({
       date: r.date,
       open: Number(r.open),
       high: Number(r.high),
@@ -120,7 +128,7 @@ export async function GET(
         const period = MA_PERIODS[ind];
         const smaValues = calcSMA(closes, period);
         const sliced: { date: string; value: number }[] = [];
-        for (let i = sliceStart; i < allRows.length; i++) {
+        for (let i = sliceStart; i < validRows.length; i++) {
           if (smaValues[i] !== null) {
             sliced.push({ date: dates[i], value: smaValues[i] as number });
           }
@@ -129,7 +137,7 @@ export async function GET(
       } else if (ind === 'rsi') {
         const rsiValues = calcRSI(closes);
         const sliced: { date: string; value: number }[] = [];
-        for (let i = sliceStart; i < allRows.length; i++) {
+        for (let i = sliceStart; i < validRows.length; i++) {
           if (rsiValues[i] !== null) {
             sliced.push({ date: dates[i], value: rsiValues[i] as number });
           }
@@ -143,7 +151,7 @@ export async function GET(
           signal: number;
           histogram: number;
         }[] = [];
-        for (let i = sliceStart; i < allRows.length; i++) {
+        for (let i = sliceStart; i < validRows.length; i++) {
           if (
             macdResult.dif[i] !== null &&
             macdResult.signal[i] !== null &&
@@ -161,7 +169,7 @@ export async function GET(
       } else if (ind === 'kd') {
         const kdResult = calcKD(highs, lows, closes);
         const sliced: { date: string; k: number; d: number }[] = [];
-        for (let i = sliceStart; i < allRows.length; i++) {
+        for (let i = sliceStart; i < validRows.length; i++) {
           if (kdResult.k[i] !== null && kdResult.d[i] !== null) {
             sliced.push({
               date: dates[i],
@@ -179,7 +187,7 @@ export async function GET(
           middle: number;
           lower: number;
         }[] = [];
-        for (let i = sliceStart; i < allRows.length; i++) {
+        for (let i = sliceStart; i < validRows.length; i++) {
           if (
             bollResult.upper[i] !== null &&
             bollResult.middle[i] !== null &&

@@ -19,6 +19,9 @@ export async function GET(
     }
 
     const { stockId } = await params;
+    if (!/^\d{4,6}$/.test(stockId)) {
+      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
+    }
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get('days') ?? '30', 10);
 
@@ -40,11 +43,12 @@ export async function GET(
       .select('date, title, description, link, source')
       .eq('stock_id', stockId)
       .gte('date', cutoffStr)
-      .order('date', { ascending: false });
+      .order('date', { ascending: false })
+      .limit(200);
 
     if (error) {
       console.error('Stock news error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to fetch news data' }, { status: 500 });
     }
 
     const result = (data ?? []).map((row) => ({

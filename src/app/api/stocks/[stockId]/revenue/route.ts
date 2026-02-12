@@ -26,6 +26,9 @@ export async function GET(
     }
 
     const { stockId } = await params;
+    if (!/^\d{4,6}$/.test(stockId)) {
+      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
+    }
     const { searchParams } = new URL(request.url);
     const months = parseInt(searchParams.get('months') ?? '12', 10);
 
@@ -49,7 +52,7 @@ export async function GET(
 
     if (error) {
       console.error('Monthly revenue error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to fetch revenue data' }, { status: 500 });
     }
 
     const rows = (data ?? []) as RevenueRow[];

@@ -32,6 +32,9 @@ export async function GET(
     }
 
     const { stockId } = await params;
+    if (!/^\d{4,6}$/.test(stockId)) {
+      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
+    }
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get('days') ?? '20', 10);
 
@@ -55,7 +58,7 @@ export async function GET(
     if (dateError) {
       console.error('Institutional dates error:', dateError);
       return NextResponse.json(
-        { error: dateError.message },
+        { error: 'Failed to fetch institutional data' },
         { status: 500 }
       );
     }
@@ -77,7 +80,7 @@ export async function GET(
 
     if (error) {
       console.error('Institutional investors error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to fetch institutional data' }, { status: 500 });
     }
 
     // Group by date
