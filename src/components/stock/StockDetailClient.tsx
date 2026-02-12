@@ -3,6 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StockHeader } from './StockHeader';
 import { KLineChart } from './KLineChart';
+import { FundamentalsTab } from './FundamentalsTab';
 
 export interface StockInfo {
   stock_id: string;
@@ -42,9 +43,7 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
           <TabsTrigger value="news">新聞</TabsTrigger>
         </TabsList>
         <TabsContent value="fundamentals">
-          <div className="rounded-lg border border-[#1E293B] bg-[#0F172A] p-4 text-[#94A3B8]">
-            基本面分析 (Coming Soon)
-          </div>
+          <FundamentalsTab stockId={stockInfo.stock_id} />
         </TabsContent>
         <TabsContent value="chips">
           <div className="rounded-lg border border-[#1E293B] bg-[#0F172A] p-4 text-[#94A3B8]">
