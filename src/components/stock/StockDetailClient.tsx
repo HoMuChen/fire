@@ -4,6 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StockHeader } from './StockHeader';
 import { KLineChart } from './KLineChart';
 import { FundamentalsTab } from './FundamentalsTab';
+import { ChipsTab } from './ChipsTab';
+import { NewsTab } from './NewsTab';
 
 export interface StockInfo {
   stock_id: string;
@@ -46,14 +48,10 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
           <FundamentalsTab stockId={stockInfo.stock_id} />
         </TabsContent>
         <TabsContent value="chips">
-          <div className="rounded-lg border border-[#1E293B] bg-[#0F172A] p-4 text-[#94A3B8]">
-            籌碼面分析 (Coming Soon)
-          </div>
+          <ChipsTab stockId={stockInfo.stock_id} />
         </TabsContent>
         <TabsContent value="news">
-          <div className="rounded-lg border border-[#1E293B] bg-[#0F172A] p-4 text-[#94A3B8]">
-            新聞 (Coming Soon)
-          </div>
+          <NewsTab stockId={stockInfo.stock_id} />
         </TabsContent>
       </Tabs>
     </div>
