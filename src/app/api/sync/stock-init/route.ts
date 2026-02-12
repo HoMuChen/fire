@@ -18,6 +18,20 @@ import { getDateYearsAgo, formatDate } from '@/lib/utils';
 
 export const maxDuration = 300;
 
+async function upsertWithCheck(
+  supabase: ReturnType<typeof createAdminClient>,
+  table: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rows: Record<string, any>[],
+  onConflict: string,
+  errors: string[]
+) {
+  const { error } = await supabase.from(table).upsert(rows, { onConflict });
+  if (error) {
+    errors.push(`${table}: ${error.message}`);
+  }
+}
+
 export async function POST(request: NextRequest) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
@@ -44,6 +58,8 @@ export async function POST(request: NextRequest) {
     .update({ sync_status: 'syncing' })
     .eq('stock_id', stock.stock_id);
 
+  const upsertErrors: string[] = [];
+
   try {
     console.log(`Syncing ${stock.stock_id} ${stock.stock_name}...`);
 
@@ -62,7 +78,7 @@ export async function POST(request: NextRequest) {
         trading_turnover: p.Trading_turnover,
         spread: p.spread,
       }));
-      await supabase.from('stock_prices').upsert(rows, { onConflict: 'stock_id,date' });
+      await upsertWithCheck(supabase, 'stock_prices', rows, 'stock_id,date', upsertErrors);
     }
 
     // 2. PER/PBR
@@ -75,7 +91,7 @@ export async function POST(request: NextRequest) {
         pbr: p.PBR,
         dividend_yield: p.dividend_yield,
       }));
-      await supabase.from('stock_per').upsert(rows, { onConflict: 'stock_id,date' });
+      await upsertWithCheck(supabase, 'stock_per', rows, 'stock_id,date', upsertErrors);
     }
 
     // 3. Institutional investors
@@ -88,9 +104,7 @@ export async function POST(request: NextRequest) {
         buy: i.buy,
         sell: i.sell,
       }));
-      await supabase
-        .from('institutional_investors')
-        .upsert(rows, { onConflict: 'stock_id,date,investor_name' });
+      await upsertWithCheck(supabase, 'institutional_investors', rows, 'stock_id,date,investor_name', upsertErrors);
     }
 
     // 4. Margin trading
@@ -110,7 +124,7 @@ export async function POST(request: NextRequest) {
         short_sale_yesterday_balance: m.ShortSaleYesterdayBalance,
         short_sale_today_balance: m.ShortSaleTodayBalance,
       }));
-      await supabase.from('margin_trading').upsert(rows, { onConflict: 'stock_id,date' });
+      await upsertWithCheck(supabase, 'margin_trading', rows, 'stock_id,date', upsertErrors);
     }
 
     // 5. Foreign shareholding
@@ -122,7 +136,7 @@ export async function POST(request: NextRequest) {
         foreign_holding_shares: s.ForeignInvestmentSharesHolding,
         foreign_holding_percentage: s.ForeignInvestmentShareholdingRatio,
       }));
-      await supabase.from('foreign_shareholding').upsert(rows, { onConflict: 'stock_id,date' });
+      await upsertWithCheck(supabase, 'foreign_shareholding', rows, 'stock_id,date', upsertErrors);
     }
 
     // 6. Monthly revenue
@@ -135,9 +149,7 @@ export async function POST(request: NextRequest) {
         revenue_month: r.revenue_month,
         revenue: r.revenue,
       }));
-      await supabase
-        .from('monthly_revenue')
-        .upsert(rows, { onConflict: 'stock_id,revenue_year,revenue_month' });
+      await upsertWithCheck(supabase, 'monthly_revenue', rows, 'stock_id,revenue_year,revenue_month', upsertErrors);
     }
 
     // 7. Financial statements (income)
@@ -150,9 +162,7 @@ export async function POST(request: NextRequest) {
         item_name: f.type,
         value: f.value,
       }));
-      await supabase
-        .from('financial_statements')
-        .upsert(rows, { onConflict: 'stock_id,date,statement_type,item_name' });
+      await upsertWithCheck(supabase, 'financial_statements', rows, 'stock_id,date,statement_type,item_name', upsertErrors);
     }
 
     // 8. Balance sheet
@@ -165,9 +175,7 @@ export async function POST(request: NextRequest) {
         item_name: f.type,
         value: f.value,
       }));
-      await supabase
-        .from('financial_statements')
-        .upsert(rows, { onConflict: 'stock_id,date,statement_type,item_name' });
+      await upsertWithCheck(supabase, 'financial_statements', rows, 'stock_id,date,statement_type,item_name', upsertErrors);
     }
 
     // 9. Cash flow
@@ -180,9 +188,7 @@ export async function POST(request: NextRequest) {
         item_name: f.type,
         value: f.value,
       }));
-      await supabase
-        .from('financial_statements')
-        .upsert(rows, { onConflict: 'stock_id,date,statement_type,item_name' });
+      await upsertWithCheck(supabase, 'financial_statements', rows, 'stock_id,date,statement_type,item_name', upsertErrors);
     }
 
     // 10. Dividends (5 years of history)
@@ -195,7 +201,7 @@ export async function POST(request: NextRequest) {
         cash_dividend: d.CashEarningsDistribution + d.CashStatutorySurplus,
         stock_dividend: d.StockEarningsDistribution + d.StockStatutorySurplus,
       }));
-      await supabase.from('dividends').upsert(rows, { onConflict: 'stock_id,date' });
+      await upsertWithCheck(supabase, 'dividends', rows, 'stock_id,date', upsertErrors);
     }
 
     // 11. News (last 30 days)
@@ -211,9 +217,20 @@ export async function POST(request: NextRequest) {
         link: n.link,
         source: n.source,
       }));
+      await upsertWithCheck(supabase, 'stock_news', rows, 'stock_id,date,title', upsertErrors);
+    }
+
+    if (upsertErrors.length > 0) {
+      console.error(`Upsert errors for ${stock.stock_id}:`, upsertErrors);
       await supabase
-        .from('stock_news')
-        .upsert(rows, { onConflict: 'stock_id,date,title' });
+        .from('stocks')
+        .update({ sync_status: 'failed' })
+        .eq('stock_id', stock.stock_id);
+
+      return NextResponse.json({
+        error: `Synced ${stock.stock_id} with ${upsertErrors.length} upsert errors`,
+        upsertErrors,
+      }, { status: 500 });
     }
 
     // Mark as synced

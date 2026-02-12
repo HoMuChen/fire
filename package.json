@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "setup-db": "tsx --env-file=.env.local scripts/setup-db.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",

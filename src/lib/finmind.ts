@@ -14,7 +14,7 @@ import type {
 } from '@/types';
 
 const FINMIND_BASE_URL = 'https://api.finmindtrade.com/api/v4/data';
-const REQUEST_DELAY_MS = 8000; // 8 seconds between requests (~7.5 req/min, safe for 600/hr)
+const REQUEST_DELAY_MS = 6000; // 6 seconds between requests (10 req/min = 600/hr)
 
 let lastRequestTime = 0;
 

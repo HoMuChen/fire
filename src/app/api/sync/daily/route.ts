@@ -6,6 +6,7 @@ import {
   fetchStockPER,
   fetchInstitutional,
   fetchMarginTrading,
+  fetchShareholding,
   fetchNews,
 } from '@/lib/finmind';
 import { formatDate } from '@/lib/utils';
@@ -29,9 +30,10 @@ export async function POST(request: NextRequest) {
   }
 
   const stockIds = [...new Set(watchlistItems.map((item) => item.stock_id))];
-  const results: { stock_id: string; status: string }[] = [];
+  const results: { stock_id: string; status: string; errors?: string[] }[] = [];
 
   for (const stockId of stockIds) {
+    const errors: string[] = [];
     try {
       // Fetch today's price
       const prices = await fetchStockPrices(stockId, today, today);
@@ -48,7 +50,8 @@ export async function POST(request: NextRequest) {
           trading_turnover: p.Trading_turnover,
           spread: p.spread,
         }));
-        await supabase.from('stock_prices').upsert(rows, { onConflict: 'stock_id,date' });
+        const { error } = await supabase.from('stock_prices').upsert(rows, { onConflict: 'stock_id,date' });
+        if (error) errors.push(`stock_prices: ${error.message}`);
       }
 
       // Fetch today's PER
@@ -61,7 +64,8 @@ export async function POST(request: NextRequest) {
           pbr: p.PBR,
           dividend_yield: p.dividend_yield,
         }));
-        await supabase.from('stock_per').upsert(rows, { onConflict: 'stock_id,date' });
+        const { error } = await supabase.from('stock_per').upsert(rows, { onConflict: 'stock_id,date' });
+        if (error) errors.push(`stock_per: ${error.message}`);
       }
 
       // Fetch today's institutional
@@ -74,9 +78,10 @@ export async function POST(request: NextRequest) {
           buy: i.buy,
           sell: i.sell,
         }));
-        await supabase
+        const { error } = await supabase
           .from('institutional_investors')
           .upsert(rows, { onConflict: 'stock_id,date,investor_name' });
+        if (error) errors.push(`institutional_investors: ${error.message}`);
       }
 
       // Fetch today's margin
@@ -96,7 +101,21 @@ export async function POST(request: NextRequest) {
           short_sale_yesterday_balance: m.ShortSaleYesterdayBalance,
           short_sale_today_balance: m.ShortSaleTodayBalance,
         }));
-        await supabase.from('margin_trading').upsert(rows, { onConflict: 'stock_id,date' });
+        const { error } = await supabase.from('margin_trading').upsert(rows, { onConflict: 'stock_id,date' });
+        if (error) errors.push(`margin_trading: ${error.message}`);
+      }
+
+      // Fetch today's foreign shareholding
+      const shareholding = await fetchShareholding(stockId, today);
+      if (shareholding.length > 0) {
+        const rows = shareholding.map((s) => ({
+          stock_id: s.stock_id,
+          date: s.date,
+          foreign_holding_shares: s.ForeignInvestmentSharesHolding,
+          foreign_holding_percentage: s.ForeignInvestmentShareholdingRatio,
+        }));
+        const { error } = await supabase.from('foreign_shareholding').upsert(rows, { onConflict: 'stock_id,date' });
+        if (error) errors.push(`foreign_shareholding: ${error.message}`);
       }
 
       // Fetch today's news
@@ -110,12 +129,17 @@ export async function POST(request: NextRequest) {
           link: n.link,
           source: n.source,
         }));
-        await supabase
+        const { error } = await supabase
           .from('stock_news')
           .upsert(rows, { onConflict: 'stock_id,date,title' });
+        if (error) errors.push(`stock_news: ${error.message}`);
       }
 
-      results.push({ stock_id: stockId, status: 'ok' });
+      results.push({
+        stock_id: stockId,
+        status: errors.length > 0 ? 'partial' : 'ok',
+        errors: errors.length > 0 ? errors : undefined,
+      });
     } catch (error) {
       console.error(`Daily sync failed for ${stockId}:`, error);
       results.push({ stock_id: stockId, status: 'failed' });

@@ -8,6 +8,7 @@ function calculateRSI(closes: number[], period: number): number {
   let avgGain = 0;
   let avgLoss = 0;
 
+  // Initial SMA for first period
   for (let i = 1; i <= period; i++) {
     const change = closes[i] - closes[i - 1];
     if (change > 0) avgGain += change;
@@ -16,6 +17,16 @@ function calculateRSI(closes: number[], period: number): number {
 
   avgGain /= period;
   avgLoss /= period;
+
+  // Apply Wilder's smoothing for remaining data points
+  for (let i = period + 1; i < closes.length; i++) {
+    const change = closes[i] - closes[i - 1];
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? Math.abs(change) : 0;
+
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+  }
 
   if (avgLoss === 0) return 100;
 
@@ -80,7 +91,7 @@ export async function POST(request: NextRequest) {
             .select('close, date')
             .eq('stock_id', alert.stock_id)
             .order('date', { ascending: false })
-            .limit(15);
+            .limit(100);
 
           if (!recentPrices || recentPrices.length < 15) break;
 
