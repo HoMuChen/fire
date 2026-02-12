@@ -22,18 +22,16 @@ function formatDate(dateStr: string): string {
   return `${year}/${month}/${day}`;
 }
 
-function formatBalance(shares: number): string {
-  const zhang = Math.round(shares / 1000);
-  return zhang.toLocaleString('zh-TW');
+function formatBalance(value: number): string {
+  return value.toLocaleString('zh-TW');
 }
 
-function formatChange(shares: number): { text: string; color: string } {
-  const zhang = Math.round(shares / 1000);
-  if (zhang > 0) {
-    return { text: `+${zhang.toLocaleString('zh-TW')}`, color: 'text-[#EF4444]' };
+function formatChange(value: number): { text: string; color: string } {
+  if (value > 0) {
+    return { text: `+${value.toLocaleString('zh-TW')}`, color: 'text-[#EF4444]' };
   }
-  if (zhang < 0) {
-    return { text: zhang.toLocaleString('zh-TW'), color: 'text-[#22C55E]' };
+  if (value < 0) {
+    return { text: value.toLocaleString('zh-TW'), color: 'text-[#22C55E]' };
   }
   return { text: '0', color: 'text-[#9CA3AF]' };
 }
