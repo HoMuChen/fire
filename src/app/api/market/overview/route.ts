@@ -40,7 +40,7 @@ async function fetchTwseMarketStats() {
     const tables: TwseTable[] = json.tables ?? [];
 
     // Table with title containing "漲跌證券數合計" has up/down/unchanged
-    const upDownTable = tables.find((t) => t.title.includes('漲跌'));
+    const upDownTable = tables.find((t) => t.title?.includes('漲跌'));
     let up = 0;
     let down = 0;
     let unchanged = 0;
@@ -59,7 +59,7 @@ async function fetchTwseMarketStats() {
     }
 
     // Table with title containing "大盤統計資訊" has volume
-    const statsTable = tables.find((t) => t.title.includes('大盤統計'));
+    const statsTable = tables.find((t) => t.title?.includes('大盤統計'));
     let totalVolume = 0;
 
     if (statsTable) {
