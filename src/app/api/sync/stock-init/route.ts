@@ -40,16 +40,29 @@ export async function POST(request: NextRequest) {
   const startDate = getDateYearsAgo(2);
   const endDate = formatDate(new Date());
 
-  // Pick one pending stock
-  const { data: stock, error: pickError } = await supabase
-    .from('stocks')
-    .select('stock_id, stock_name')
-    .eq('sync_status', 'pending')
-    .limit(1)
-    .single();
+  // Pick one pending stock — prioritize stocks that are in a watchlist
+  const { data: watchlistStockIds } = await supabase
+    .from('watchlist_items')
+    .select('stock_id');
 
-  if (pickError || !stock) {
-    return NextResponse.json({ message: 'No pending stocks to sync' });
+  const wlIds = (watchlistStockIds ?? []).map((r) => r.stock_id);
+
+  let stock: { stock_id: string; stock_name: string } | null = null;
+
+  if (wlIds.length > 0) {
+    const { data } = await supabase
+      .from('stocks')
+      .select('stock_id, stock_name')
+      .eq('sync_status', 'pending')
+      .in('stock_id', wlIds)
+      .limit(1)
+      .maybeSingle();
+    stock = data;
+  }
+
+  // Fallback: if no watchlist stocks are pending, skip (don't sync random stocks)
+  if (!stock) {
+    return NextResponse.json({ message: 'No pending watchlist stocks to sync' });
   }
 
   // Mark as syncing
