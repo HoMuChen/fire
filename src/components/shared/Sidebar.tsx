@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Bell, Menu, X } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { LayoutDashboard, Bell, Menu, X, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { createClient } from '@/lib/supabase/client';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -14,7 +15,22 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setEmail(data.user?.email ?? null);
+    });
+  }, []);
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+  }
 
   return (
     <>
@@ -74,6 +90,22 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        {/* User info + logout */}
+        {email && (
+          <div className="flex items-center gap-2 border-t border-[#1E293B] px-3 py-3">
+            <span className="min-w-0 flex-1 truncate text-xs text-[#94A3B8]">{email}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 text-[#94A3B8] hover:bg-[#1E293B] hover:text-[#F8FAFC]"
+              onClick={handleLogout}
+              aria-label="登出"
+            >
+              <LogOut className="size-3.5" />
+            </Button>
+          </div>
+        )}
       </aside>
     </>
   );
