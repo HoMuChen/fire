@@ -3,45 +3,98 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { fetchFinMind } from '@/lib/finmind';
 import type { FinMindStockPrice } from '@/types';
 
-const EMPTY_OVERVIEW = {
-  date: null,
-  up: 0,
-  down: 0,
-  unchanged: 0,
-  total_volume: 0,
-  taiex: null,
-};
+function getTaiwanDateStr(daysAgo = 0): string {
+  const now = new Date();
+  const taiwanOffset = 8 * 60;
+  const taiwanMs =
+    now.getTime() + (taiwanOffset + now.getTimezoneOffset()) * 60000 - daysAgo * 86400000;
+  const d = new Date(taiwanMs);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
 
-function buildOverviewFromFinMind(prices: FinMindStockPrice[]) {
-  if (prices.length === 0) return EMPTY_OVERVIEW;
+function parseCommaNumber(s: string): number {
+  return Number(s.replace(/,/g, '')) || 0;
+}
 
-  // Find the latest trading date in the results
-  const latestDate = prices.reduce(
-    (max, p) => (p.date > max ? p.date : max),
-    prices[0].date
-  );
-  const latestPrices = prices.filter((p) => p.date === latestDate);
+interface TwseTable {
+  title: string;
+  fields: string[];
+  data: string[][];
+}
 
-  let up = 0;
-  let down = 0;
-  let unchanged = 0;
-  let totalVolume = 0;
+async function fetchTwseMarketStats() {
+  // Try today first, then go back up to 5 days to find a trading day
+  for (let daysAgo = 0; daysAgo <= 5; daysAgo++) {
+    const dateStr = getTaiwanDateStr(daysAgo);
+    const url = `https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=${dateStr}&type=MS`;
 
-  for (const p of latestPrices) {
-    if (p.spread > 0) up++;
-    else if (p.spread < 0) down++;
-    else unchanged++;
-    totalVolume += p.Trading_Volume;
+    const res = await fetch(url);
+    if (!res.ok) continue;
+
+    const json = await res.json();
+    if (json.stat !== 'OK') continue;
+
+    const tables: TwseTable[] = json.tables ?? [];
+
+    // Table with title containing "漲跌證券數合計" has up/down/unchanged
+    const upDownTable = tables.find((t) => t.title.includes('漲跌'));
+    let up = 0;
+    let down = 0;
+    let unchanged = 0;
+
+    if (upDownTable) {
+      for (const row of upDownTable.data) {
+        const label = row[0] ?? '';
+        // Use the "股票" column (index 2), fallback to "整體市場" (index 1)
+        const stockCol = row[2] ?? row[1] ?? '0';
+        const value = parseCommaNumber(stockCol.replace(/\(.*\)/, ''));
+
+        if (label.includes('上漲')) up = value;
+        else if (label.includes('下跌')) down = value;
+        else if (label.includes('持平') || label.includes('unchanged')) unchanged = value;
+      }
+    }
+
+    // Table with title containing "大盤統計資訊" has volume
+    const statsTable = tables.find((t) => t.title.includes('大盤統計'));
+    let totalVolume = 0;
+
+    if (statsTable) {
+      // First row "一般股票" has the main volume
+      for (const row of statsTable.data) {
+        if (row[0]?.includes('一般股票') || row[0]?.includes('合計')) {
+          // Trading_money is column 1
+          totalVolume += parseCommaNumber(row[1] ?? '0');
+        }
+      }
+    }
+
+    // Format date as YYYY-MM-DD
+    const formattedDate = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+
+    return { date: formattedDate, up, down, unchanged, total_volume: totalVolume };
   }
 
-  return {
-    date: latestDate,
-    up,
-    down,
-    unchanged,
-    total_volume: totalVolume,
-    taiex: null as { close: number; spread: number } | null,
-  };
+  return null;
+}
+
+async function fetchTaiexFromFinMind(startDate: string, endDate: string) {
+  try {
+    const data = await fetchFinMind<FinMindStockPrice>('TaiwanStockPrice', {
+      data_id: 'TAIEX',
+      start_date: startDate,
+      end_date: endDate,
+    });
+    if (data.length === 0) return null;
+    // Get the latest entry
+    const latest = data[data.length - 1];
+    return { close: latest.close, spread: latest.spread };
+  } catch {
+    return null;
+  }
 }
 
 export async function GET() {
@@ -53,77 +106,36 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 1. Try local DB first
-    const { data: latestRow } = await supabase
-      .from('stock_prices')
-      .select('date')
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Fetch from TWSE and FinMind in parallel
+    const fiveDaysAgo = getTaiwanDateStr(5);
+    const today = getTaiwanDateStr(0);
+    const startDate = `${fiveDaysAgo.slice(0, 4)}-${fiveDaysAgo.slice(4, 6)}-${fiveDaysAgo.slice(6, 8)}`;
+    const endDate = `${today.slice(0, 4)}-${today.slice(4, 6)}-${today.slice(6, 8)}`;
 
-    if (latestRow) {
-      const latestDate = latestRow.date;
+    const [twseStats, taiex] = await Promise.all([
+      fetchTwseMarketStats(),
+      fetchTaiexFromFinMind(startDate, endDate),
+    ]);
 
-      const [pricesResult, taiexResult] = await Promise.all([
-        supabase
-          .from('stock_prices')
-          .select('spread, volume')
-          .eq('date', latestDate),
-        supabase
-          .from('stock_prices')
-          .select('close, spread')
-          .eq('date', latestDate)
-          .in('stock_id', ['TAIEX', 'IX0001'])
-          .limit(1)
-          .maybeSingle(),
-      ]);
-
-      if (!pricesResult.error) {
-        let up = 0;
-        let down = 0;
-        let unchanged = 0;
-        let totalVolume = 0;
-
-        for (const row of pricesResult.data ?? []) {
-          const spread = row.spread ?? 0;
-          if (spread > 0) up++;
-          else if (spread < 0) down++;
-          else unchanged++;
-          totalVolume += row.volume ?? 0;
-        }
-
-        return NextResponse.json({
-          data: {
-            date: latestDate,
-            up,
-            down,
-            unchanged,
-            total_volume: totalVolume,
-            taiex: taiexResult.data
-              ? { close: taiexResult.data.close, spread: taiexResult.data.spread }
-              : null,
-          },
-        });
-      }
+    if (!twseStats) {
+      return NextResponse.json({
+        data: {
+          date: null,
+          up: 0,
+          down: 0,
+          unchanged: 0,
+          total_volume: 0,
+          taiex: null,
+        },
+      });
     }
 
-    // 2. No local data — fetch from FinMind directly
-    const now = new Date();
-    const taiwanOffset = 8 * 60;
-    const taiwanMs = now.getTime() + (taiwanOffset + now.getTimezoneOffset()) * 60000;
-    const taiwanNow = new Date(taiwanMs);
-    const endDate = taiwanNow.toISOString().split('T')[0];
-    // Look back 5 days to find the latest trading day
-    const startMs = taiwanNow.getTime() - 5 * 86400000;
-    const startDate = new Date(startMs).toISOString().split('T')[0];
-
-    const prices = await fetchFinMind<FinMindStockPrice>('TaiwanStockPrice', {
-      start_date: startDate,
-      end_date: endDate,
+    return NextResponse.json({
+      data: {
+        ...twseStats,
+        taiex,
+      },
     });
-
-    const overview = buildOverviewFromFinMind(prices);
-    return NextResponse.json({ data: overview });
   } catch (err) {
     console.error('Market overview unexpected error:', err);
     return NextResponse.json(
