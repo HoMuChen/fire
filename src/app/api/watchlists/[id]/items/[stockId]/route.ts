@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { requireAuth, handleApiError } from '@/lib/api';
 
 export async function DELETE(
   _request: NextRequest,
@@ -7,12 +7,7 @@ export async function DELETE(
 ) {
   try {
     const { id, stockId } = await params;
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase } = await requireAuth();
 
     // Verify user owns the watchlist
     const { data: watchlist, error: wlError } = await supabase
@@ -41,10 +36,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('Delete watchlist item unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Delete watchlist item', err);
   }
 }

@@ -1,15 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth, handleApiError } from '@/lib/api';
 
 export async function GET() {
   try {
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase } = await requireAuth();
 
     // Get start of today in Taiwan time (UTC+8)
     const now = new Date();
@@ -74,10 +69,6 @@ export async function GET() {
 
     return NextResponse.json({ data: filtered });
   } catch (err) {
-    console.error('Triggered alerts unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Triggered alerts', err);
   }
 }

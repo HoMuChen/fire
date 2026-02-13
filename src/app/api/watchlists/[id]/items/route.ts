@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth, handleApiError } from '@/lib/api';
 
 export async function GET(
   _request: NextRequest,
@@ -8,12 +8,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase } = await requireAuth();
 
     // Verify user owns the watchlist (RLS handles this, but good to check)
     const { data: watchlist, error: wlError } = await supabase
@@ -42,11 +37,7 @@ export async function GET(
 
     return NextResponse.json({ data });
   } catch (err) {
-    console.error('List watchlist items unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('List watchlist items', err);
   }
 }
 
@@ -56,12 +47,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase } = await requireAuth();
 
     const body = await request.json();
     const { stock_id } = body;
@@ -146,10 +132,6 @@ export async function POST(
 
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {
-    console.error('Add watchlist item unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Add watchlist item', err);
   }
 }

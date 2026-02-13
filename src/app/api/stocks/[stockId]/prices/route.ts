@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth, validateStockId, handleApiError } from '@/lib/api';
 import {
   calcSMA,
   calcRSI,
@@ -33,21 +33,8 @@ export async function GET(
   { params }: { params: Promise<{ stockId: string }> }
 ) {
   try {
-    // Auth check
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { stockId } = await params;
-    if (!/^\d{4,6}$/.test(stockId)) {
-      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
-    }
+    await requireAuth();
+    const stockId = await validateStockId(params);
     const { searchParams } = new URL(request.url);
 
     // Determine days from range (priority) or days param
@@ -217,10 +204,6 @@ export async function GET(
       },
     });
   } catch (err) {
-    console.error('Stock prices unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Stock prices', err);
   }
 }

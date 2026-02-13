@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { requireAuth, handleApiError } from '@/lib/api';
 
 export async function PUT(
   request: NextRequest,
@@ -7,12 +7,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase } = await requireAuth();
 
     const body = await request.json();
     const updates: Record<string, unknown> = {};
@@ -67,11 +62,7 @@ export async function PUT(
 
     return NextResponse.json({ data });
   } catch (err) {
-    console.error('Update watchlist unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Update watchlist', err);
   }
 }
 
@@ -81,12 +72,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase } = await requireAuth();
 
     const { error } = await supabase
       .from('watchlists')
@@ -100,10 +86,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('Delete watchlist unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Delete watchlist', err);
   }
 }

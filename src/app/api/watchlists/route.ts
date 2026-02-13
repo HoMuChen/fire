@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { requireAuth, handleApiError } from '@/lib/api';
 
 export async function GET() {
   try {
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase } = await requireAuth();
 
     const { data, error } = await supabase
       .from('watchlists')
@@ -22,22 +17,13 @@ export async function GET() {
 
     return NextResponse.json({ data });
   } catch (err) {
-    console.error('List watchlists unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('List watchlists', err);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase, user } = await requireAuth();
 
     const body = await request.json();
     const { name } = body;
@@ -62,7 +48,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from('watchlists')
       .insert({
-        user_id: user.user.id,
+        user_id: user.id,
         name: name.trim(),
         sort_order: nextSortOrder,
       })
@@ -76,10 +62,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {
-    console.error('Create watchlist unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Create watchlist', err);
   }
 }

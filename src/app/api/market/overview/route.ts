@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { fetchFinMind } from '@/lib/finmind';
+import { requireAuth, handleApiError } from '@/lib/api';
 import type { FinMindStockPrice } from '@/types';
 
 function getTaiwanDateStr(daysAgo = 0): string {
@@ -99,12 +99,7 @@ async function fetchTaiexFromFinMind(startDate: string, endDate: string) {
 
 export async function GET() {
   try {
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await requireAuth();
 
     // Fetch from TWSE and FinMind in parallel
     const fiveDaysAgo = getTaiwanDateStr(5);
@@ -137,10 +132,6 @@ export async function GET() {
       },
     });
   } catch (err) {
-    console.error('Market overview unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Market overview', err);
   }
 }

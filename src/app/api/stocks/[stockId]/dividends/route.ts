@@ -1,27 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth, validateStockId, handleApiError } from '@/lib/api';
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ stockId: string }> }
 ) {
   try {
-    // Auth check
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { stockId } = await params;
-    if (!/^\d{4,6}$/.test(stockId)) {
-      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
-    }
+    await requireAuth();
+    const stockId = await validateStockId(params);
 
     const admin = createAdminClient();
     const { data, error } = await admin
@@ -50,10 +37,6 @@ export async function GET(
 
     return NextResponse.json({ data: result });
   } catch (err) {
-    console.error('Dividends unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Dividends', err);
   }
 }

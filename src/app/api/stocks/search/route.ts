@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { requireAuth, handleApiError } from '@/lib/api';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,12 +13,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase } = await requireAuth();
 
     const pattern = `%${q}%`;
 
@@ -35,10 +30,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data });
   } catch (err) {
-    console.error('Stock search unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Stock search', err);
   }
 }

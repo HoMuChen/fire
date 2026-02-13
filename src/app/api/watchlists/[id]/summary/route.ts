@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { calcChangePercent } from '@/lib/utils';
+import { requireAuth, handleApiError } from '@/lib/api';
 
 export async function GET(
   _request: NextRequest,
@@ -9,12 +9,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createServerSupabaseClient();
-
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { supabase } = await requireAuth();
 
     // Verify watchlist ownership explicitly
     const { data: watchlist, error: watchlistError } = await supabase
@@ -47,84 +42,55 @@ export async function GET(
     const admin = createAdminClient();
 
     // Fetch prices, PER, and institutional data in parallel
-    async function fetchPrices(adminClient: ReturnType<typeof createAdminClient>, ids: string[]) {
-      const map: Record<string, { close: number | null; spread: number | null; volume: number | null }> = {};
-      const { data: latestRow } = await adminClient
-        .from('stock_prices')
+    async function fetchLatestByDate<T extends Record<string, unknown>>(
+      table: string,
+      ids: string[],
+      selectCols: string,
+    ): Promise<T[] | null> {
+      const { data: latestRow } = await admin
+        .from(table)
         .select('date')
         .in('stock_id', ids)
         .order('date', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (latestRow?.date) {
-        const { data: prices } = await adminClient
-          .from('stock_prices')
-          .select('stock_id, close, spread, volume')
-          .in('stock_id', ids)
-          .eq('date', latestRow.date);
-        if (prices) {
-          for (const p of prices) {
-            map[p.stock_id] = { close: p.close, spread: p.spread, volume: p.volume };
-          }
-        }
-      }
-      return map;
-    }
-
-    async function fetchPer(adminClient: ReturnType<typeof createAdminClient>, ids: string[]) {
-      const map: Record<string, { per: number | null; pbr: number | null; dividend_yield: number | null }> = {};
-      const { data: latestRow } = await adminClient
-        .from('stock_per')
-        .select('date')
+      if (!latestRow?.date) return null;
+      const { data } = await admin
+        .from(table)
+        .select(selectCols)
         .in('stock_id', ids)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (latestRow?.date) {
-        const { data: perData } = await adminClient
-          .from('stock_per')
-          .select('stock_id, per, pbr, dividend_yield')
-          .in('stock_id', ids)
-          .eq('date', latestRow.date);
-        if (perData) {
-          for (const p of perData) {
-            map[p.stock_id] = { per: p.per, pbr: p.pbr, dividend_yield: p.dividend_yield };
-          }
-        }
-      }
-      return map;
+        .eq('date', latestRow.date);
+      return data as T[] | null;
     }
 
-    async function fetchInstitutional(adminClient: ReturnType<typeof createAdminClient>, ids: string[]) {
-      const map: Record<string, number> = {};
-      const { data: latestRow } = await adminClient
-        .from('institutional_investors')
-        .select('date')
-        .in('stock_id', ids)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (latestRow?.date) {
-        const { data: iiData } = await adminClient
-          .from('institutional_investors')
-          .select('stock_id, buy, sell')
-          .in('stock_id', ids)
-          .eq('date', latestRow.date);
-        if (iiData) {
-          for (const row of iiData) {
-            const net = (row.buy ?? 0) - (row.sell ?? 0);
-            map[row.stock_id] = (map[row.stock_id] ?? 0) + net;
-          }
-        }
-      }
-      return map;
-    }
-
-    const [pricesMap, perMap, iiNetMap] = await Promise.all([
-      fetchPrices(admin, stockIds),
-      fetchPer(admin, stockIds),
-      fetchInstitutional(admin, stockIds),
+    const [priceRows, perRows, iiRows] = await Promise.all([
+      fetchLatestByDate<{ stock_id: string; close: number | null; spread: number | null; volume: number | null }>('stock_prices', stockIds, 'stock_id, close, spread, volume'),
+      fetchLatestByDate<{ stock_id: string; per: number | null; pbr: number | null; dividend_yield: number | null }>('stock_per', stockIds, 'stock_id, per, pbr, dividend_yield'),
+      fetchLatestByDate<{ stock_id: string; buy: number | null; sell: number | null }>('institutional_investors', stockIds, 'stock_id, buy, sell'),
     ]);
+
+    // Build maps
+    const pricesMap: Record<string, { close: number | null; spread: number | null; volume: number | null }> = {};
+    if (priceRows) {
+      for (const p of priceRows) {
+        pricesMap[p.stock_id] = { close: p.close, spread: p.spread, volume: p.volume };
+      }
+    }
+
+    const perMap: Record<string, { per: number | null; pbr: number | null; dividend_yield: number | null }> = {};
+    if (perRows) {
+      for (const p of perRows) {
+        perMap[p.stock_id] = { per: p.per, pbr: p.pbr, dividend_yield: p.dividend_yield };
+      }
+    }
+
+    const iiNetMap: Record<string, number> = {};
+    if (iiRows) {
+      for (const row of iiRows) {
+        const net = (row.buy ?? 0) - (row.sell ?? 0);
+        iiNetMap[row.stock_id] = (iiNetMap[row.stock_id] ?? 0) + net;
+      }
+    }
 
     // Build summary response
     const data = items.map((item) => {
@@ -155,10 +121,6 @@ export async function GET(
 
     return NextResponse.json({ data });
   } catch (err) {
-    console.error('Watchlist summary unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Watchlist summary', err);
   }
 }

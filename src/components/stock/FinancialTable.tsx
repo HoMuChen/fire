@@ -1,34 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
+import { useFetch } from '@/hooks/useFetch';
 import type { FinancialDataPoint, TimeRange } from './types';
 import { RANGE_PARAMS } from './types';
 
 export function FinancialTable({ stockId, timeRange }: { stockId: string; timeRange: TimeRange }) {
-  const [data, setData] = useState<FinancialDataPoint[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    const { quarters } = RANGE_PARAMS[timeRange];
-
-    async function fetchData() {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/stocks/${stockId}/financial?quarters=${quarters}`);
-        if (!res.ok || cancelled) return;
-        const json = await res.json();
-        if (!cancelled) setData(json.data ?? []);
-      } catch {
-        // silently fail
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    fetchData();
-    return () => { cancelled = true; };
-  }, [stockId, timeRange]);
+  const { quarters } = RANGE_PARAMS[timeRange];
+  const url = useMemo(() => `/api/stocks/${stockId}/financial?quarters=${quarters}`, [stockId, quarters]);
+  const { data, loading } = useFetch<FinancialDataPoint>(url);
 
   if (loading) return <div className="py-8 text-center text-sm text-[#94A3B8]">載入中...</div>;
   if (data.length === 0) return <div className="py-8 text-center text-sm text-[#64748B]">暫無資料</div>;

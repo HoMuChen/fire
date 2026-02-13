@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
+import { useFetch } from '@/hooks/useFetch';
 
 interface NewsItem {
   date: string;
@@ -8,10 +9,6 @@ interface NewsItem {
   description: string | null;
   link: string;
   source: string;
-}
-
-interface NewsTabProps {
-  stockId: string;
 }
 
 function formatNewsDate(dateStr: string): string {
@@ -22,37 +19,14 @@ function formatNewsDate(dateStr: string): string {
   return `${year}/${month}/${day}`;
 }
 
-export function NewsTab({ stockId }: NewsTabProps) {
-  const [data, setData] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(true);
+export function NewsTab({ stockId }: { stockId: string }) {
+  const url = useMemo(() => `/api/stocks/${stockId}/news?days=30`, [stockId]);
+  const { data, loading } = useFetch<NewsItem>(url);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchNews() {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/stocks/${stockId}/news?days=30`);
-        if (!res.ok || cancelled) return;
-        const json = await res.json();
-        if (!cancelled) {
-          const sorted = (json.data as NewsItem[]).sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-          );
-          setData(sorted);
-        }
-      } catch {
-        // silently fail
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    fetchNews();
-    return () => {
-      cancelled = true;
-    };
-  }, [stockId]);
+  const sorted = useMemo(
+    () => [...data].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [data]
+  );
 
   if (loading) {
     return (
@@ -62,7 +36,7 @@ export function NewsTab({ stockId }: NewsTabProps) {
     );
   }
 
-  if (data.length === 0) {
+  if (sorted.length === 0) {
     return (
       <div className="flex items-center justify-center rounded-lg border border-[#1E293B] bg-[#0F172A] p-8">
         <span className="text-sm text-[#94A3B8]">暫無資料</span>
@@ -74,7 +48,7 @@ export function NewsTab({ stockId }: NewsTabProps) {
     <div>
       <h3 className="text-sm font-medium text-[#F8FAFC] mb-3">最新新聞</h3>
       <div className="space-y-3">
-        {data.map((item, index) => (
+        {sorted.map((item, index) => (
           <a
             key={`${item.date}-${index}`}
             href={item.link}

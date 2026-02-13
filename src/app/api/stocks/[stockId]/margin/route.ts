@@ -1,36 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth, validateStockId, parseIntParam, handleApiError } from '@/lib/api';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ stockId: string }> }
 ) {
   try {
-    // Auth check
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { stockId } = await params;
-    if (!/^\d{4,6}$/.test(stockId)) {
-      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
-    }
+    await requireAuth();
+    const stockId = await validateStockId(params);
     const { searchParams } = new URL(request.url);
-    const days = parseInt(searchParams.get('days') ?? '20', 10);
-
-    if (isNaN(days) || days < 1 || days > 365) {
-      return NextResponse.json(
-        { error: 'Invalid "days" parameter. Must be between 1 and 365.' },
-        { status: 400 }
-      );
-    }
+    const days = parseIntParam(searchParams, 'days', 20, 1, 365);
 
     const admin = createAdminClient();
     const { data, error } = await admin
@@ -64,10 +44,6 @@ export async function GET(
 
     return NextResponse.json({ data: result });
   } catch (err) {
-    console.error('Margin trading unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Margin trading', err);
   }
 }

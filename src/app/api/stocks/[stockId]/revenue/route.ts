@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth, validateStockId, parseIntParam, handleApiError } from '@/lib/api';
 
 interface RevenueRow {
   date: string;
@@ -14,30 +14,10 @@ export async function GET(
   { params }: { params: Promise<{ stockId: string }> }
 ) {
   try {
-    // Auth check
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { stockId } = await params;
-    if (!/^\d{4,6}$/.test(stockId)) {
-      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
-    }
+    await requireAuth();
+    const stockId = await validateStockId(params);
     const { searchParams } = new URL(request.url);
-    const months = parseInt(searchParams.get('months') ?? '12', 10);
-
-    if (isNaN(months) || months < 1 || months > 120) {
-      return NextResponse.json(
-        { error: 'Invalid "months" parameter. Must be between 1 and 120.' },
-        { status: 400 }
-      );
-    }
+    const months = parseIntParam(searchParams, 'months', 12, 1, 120);
 
     // Fetch extra months to calculate YoY (need 12 more months for previous year)
     const fetchLimit = months + 12;
@@ -102,10 +82,6 @@ export async function GET(
 
     return NextResponse.json({ data: result });
   } catch (err) {
-    console.error('Monthly revenue unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Monthly revenue', err);
   }
 }

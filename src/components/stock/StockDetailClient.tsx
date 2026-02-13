@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useToggleSet } from '@/hooks/useToggleSet';
 import { Button } from '@/components/ui/button';
 import { StockHeader } from './StockHeader';
 import { KLineChart } from './KLineChart';
@@ -61,39 +62,14 @@ const BOTTOM_TABS: { key: BottomTab; label: string }[] = [
 export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
   // ─── State ──────────────────────────────────────────────────────────────────
   const [timeRange, setTimeRange] = useState<TimeRange>('6m');
-  const [enabledMAs, setEnabledMAs] = useState<Set<MAKey>>(new Set(['ma5', 'ma20']));
-  const [enabledSubplots, setEnabledSubplots] = useState<Set<TechnicalSubplotKey>>(new Set());
-  const [enabledOverlays, setEnabledOverlays] = useState<Set<ChipsOverlayKey>>(new Set());
+  const [enabledMAs, toggleMA] = useToggleSet<MAKey>(['ma5', 'ma20']);
+  const [enabledSubplots, toggleSubplot] = useToggleSet<TechnicalSubplotKey>();
+  const [enabledOverlays, toggleOverlay] = useToggleSet<ChipsOverlayKey>();
   const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [indicators, setIndicators] = useState<IndicatorsResponse>({});
   const [overlayData, setOverlayData] = useState<OverlayData>({});
   const [loading, setLoading] = useState(true);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>('news');
-
-  // ─── Toggle handlers ────────────────────────────────────────────────────────
-  const toggleMA = useCallback((key: MAKey) => {
-    setEnabledMAs((prev) => {
-      const n = new Set(prev);
-      n.has(key) ? n.delete(key) : n.add(key);
-      return n;
-    });
-  }, []);
-
-  const toggleSubplot = useCallback((key: TechnicalSubplotKey) => {
-    setEnabledSubplots((prev) => {
-      const n = new Set(prev);
-      n.has(key) ? n.delete(key) : n.add(key);
-      return n;
-    });
-  }, []);
-
-  const toggleOverlay = useCallback((key: ChipsOverlayKey) => {
-    setEnabledOverlays((prev) => {
-      const n = new Set(prev);
-      n.has(key) ? n.delete(key) : n.add(key);
-      return n;
-    });
-  }, []);
 
   // ─── Effect 1: price + indicators ──────────────────────────────────────────
   useEffect(() => {

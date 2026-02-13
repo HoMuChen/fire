@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth, validateStockId, parseIntParam, handleApiError } from '@/lib/api';
 
 interface FinancialRow {
   date: string;
@@ -14,30 +14,10 @@ export async function GET(
   { params }: { params: Promise<{ stockId: string }> }
 ) {
   try {
-    // Auth check
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { stockId } = await params;
-    if (!/^\d{4,6}$/.test(stockId)) {
-      return NextResponse.json({ error: 'Invalid stock ID' }, { status: 400 });
-    }
+    await requireAuth();
+    const stockId = await validateStockId(params);
     const { searchParams } = new URL(request.url);
-    const quarters = parseInt(searchParams.get('quarters') ?? '8', 10);
-
-    if (isNaN(quarters) || quarters < 1 || quarters > 40) {
-      return NextResponse.json(
-        { error: 'Invalid "quarters" parameter. Must be between 1 and 40.' },
-        { status: 400 }
-      );
-    }
+    const quarters = parseIntParam(searchParams, 'quarters', 8, 1, 40);
 
     const admin = createAdminClient();
 
@@ -113,10 +93,6 @@ export async function GET(
 
     return NextResponse.json({ data: result });
   } catch (err) {
-    console.error('Financial statements unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError('Financial statements', err);
   }
 }
