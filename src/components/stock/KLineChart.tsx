@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type {
   MAKey,
   TechnicalSubplotKey,
@@ -80,6 +80,75 @@ function formatVolume(v: number): string {
   if (v >= 1e8) return (v / 1e8).toFixed(2) + '\u5104';
   if (v >= 1e4) return (v / 1e4).toFixed(0) + '\u842C';
   return v.toLocaleString();
+}
+
+function formatNet(v: number): string {
+  const sign = v >= 0 ? '+' : '';
+  return sign + v.toLocaleString();
+}
+
+type TooltipSegment = { label: string; value: string; color?: string };
+
+function getSubplotTooltip(
+  key: SubplotKey,
+  date: string,
+  indicators: IndicatorsResponse,
+  overlayData: OverlayData,
+): TooltipSegment[] | null {
+  switch (key) {
+    case 'rsi': {
+      const d = indicators.rsi?.find((r) => r.date === date);
+      return d ? [{ label: 'RSI', value: d.value.toFixed(1), color: '#FACC15' }] : null;
+    }
+    case 'macd': {
+      const d = indicators.macd?.find((r) => r.date === date);
+      return d
+        ? [
+            { label: 'DIF', value: d.dif.toFixed(2), color: '#3B82F6' },
+            { label: 'Signal', value: d.signal.toFixed(2), color: '#F97316' },
+            { label: 'Hist', value: d.histogram.toFixed(2), color: d.histogram >= 0 ? '#EF4444' : '#22C55E' },
+          ]
+        : null;
+    }
+    case 'kd': {
+      const d = indicators.kd?.find((r) => r.date === date);
+      return d
+        ? [
+            { label: 'K', value: d.k.toFixed(1), color: '#3B82F6' },
+            { label: 'D', value: d.d.toFixed(1), color: '#F97316' },
+          ]
+        : null;
+    }
+    case 'foreign': {
+      const d = overlayData.institutional?.find((r) => r.date === date);
+      if (!d) return null;
+      const net = d.foreign.net / 1000;
+      return [{ label: '外資', value: formatNet(Math.round(net)) + ' 張', color: net >= 0 ? '#3B82F6' : 'rgba(59,130,246,0.5)' }];
+    }
+    case 'trust': {
+      const d = overlayData.institutional?.find((r) => r.date === date);
+      if (!d) return null;
+      const net = d.trust.net / 1000;
+      return [{ label: '投信', value: formatNet(Math.round(net)) + ' 張', color: net >= 0 ? '#F97316' : 'rgba(249,115,22,0.5)' }];
+    }
+    case 'dealer': {
+      const d = overlayData.institutional?.find((r) => r.date === date);
+      if (!d) return null;
+      const net = d.dealer.net / 1000;
+      return [{ label: '自營商', value: formatNet(Math.round(net)) + ' 張', color: net >= 0 ? '#A855F7' : 'rgba(168,85,247,0.5)' }];
+    }
+    case 'margin': {
+      const d = overlayData.margin?.find((r) => r.date === date);
+      return d
+        ? [
+            { label: '融資', value: d.margin_balance.toLocaleString() + ' 張', color: '#EF4444' },
+            { label: '融券', value: d.short_balance.toLocaleString() + ' 張', color: '#22C55E' },
+          ]
+        : null;
+    }
+    default:
+      return null;
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -274,33 +343,22 @@ export function KLineChart({
         lowerSeries.setData(bollData.map((d) => ({ time: d.date, value: d.lower })) as any);
       }
 
-      // Crosshair move handler for legend
-      mainChart.subscribeCrosshairMove((param: { time?: unknown; seriesData?: unknown }) => {
-        if (!param.time || !param.seriesData) {
-          setCrosshairData(null);
-          return;
-        }
-
-        const dateStr = param.time as string;
+      // Shared legend updater — called from main and subplot crosshair handlers
+      function updateLegend(dateStr: string | null) {
+        if (!dateStr) { setCrosshairData(null); return; }
         const price = pricesRef.current.find((p) => p.date === dateStr);
-        if (!price) {
-          setCrosshairData(null);
-          return;
-        }
-
+        if (!price) { setCrosshairData(null); return; }
         const change = price.close - price.open;
         const changePercent = price.open !== 0 ? ((change / price.open) * 100).toFixed(2) : '0.00';
-
         setCrosshairData({
-          date: price.date,
-          open: price.open,
-          high: price.high,
-          low: price.low,
-          close: price.close,
-          volume: price.volume,
-          change,
-          changePercent,
+          date: price.date, open: price.open, high: price.high, low: price.low,
+          close: price.close, volume: price.volume, change, changePercent,
         });
+      }
+
+      // Crosshair move handler for legend
+      mainChart.subscribeCrosshairMove((param: { time?: unknown; seriesData?: unknown }) => {
+        updateLegend(param.time && param.seriesData ? (param.time as string) : null);
       });
 
       mainChart.timeScale().fitContent();
@@ -492,6 +550,7 @@ export function KLineChart({
           if (isSyncing) return;
           isSyncing = true;
           if (param.time) {
+            updateLegend(param.time as string);
             if (mainLead) {
               try { mainChart.setCrosshairPosition(NaN, param.time, mainLead); } catch { /* ignore */ }
             }
@@ -500,6 +559,7 @@ export function KLineChart({
               try { chart.setCrosshairPosition(NaN, param.time, lead); } catch { /* ignore */ }
             }
           } else {
+            updateLegend(null);
             mainChart.clearCrosshairPosition();
             for (const { chart } of allSubCharts) {
               if (chart === subChart) continue;
@@ -599,6 +659,7 @@ export function KLineChart({
           const enabled = isSubplotEnabled(key);
           if (!enabled) return null;
           const config = SUBPLOT_CONFIG[key];
+          const tooltip = crosshairData ? getSubplotTooltip(key, crosshairData.date, indicators, overlayData) : null;
           return (
             <div
               key={key}
@@ -606,11 +667,19 @@ export function KLineChart({
               className="relative w-full border-t border-[#1E293B]"
               style={{ height: config.height }}
             >
-              <div
-                className="pointer-events-none absolute left-2 top-1 z-10 rounded px-1.5 py-0.5 text-xs font-medium"
-                style={{ backgroundColor: `${config.color}15`, color: config.color }}
-              >
-                {config.label}
+              <div className="pointer-events-none absolute left-2 top-1 z-10 flex items-center gap-3">
+                <span
+                  className="rounded px-1.5 py-0.5 text-xs font-medium"
+                  style={{ backgroundColor: `${config.color}15`, color: config.color }}
+                >
+                  {config.label}
+                </span>
+                {tooltip && tooltip.map((seg) => (
+                  <span key={seg.label} className="text-xs">
+                    <span className="text-[#94A3B8]">{seg.label} </span>
+                    <span className="font-medium" style={{ color: seg.color }}>{seg.value}</span>
+                  </span>
+                ))}
               </div>
             </div>
           );
