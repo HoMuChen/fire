@@ -35,7 +35,7 @@ const CHART_BORDER = '#334155';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function makeChartOptions(width: number, height: number, showTimeScale: boolean) {
+function makeChartOptions(width: number, height: number, showTimeScale: boolean, interactive = true) {
   return {
     width,
     height,
@@ -57,6 +57,8 @@ function makeChartOptions(width: number, height: number, showTimeScale: boolean)
     crosshair: {
       mode: 0,
     },
+    handleScroll: interactive,
+    handleScale: interactive,
   };
 }
 
@@ -181,6 +183,20 @@ export function KLineChart({
       const hasAnySubplots = activeSubplots.length > 0;
       const isLast = (key: string) => key === lastSubplot;
 
+      // ─── Chart time info registry for sync ─────────────────────────
+      // Each chart may have different bar counts / date ranges.
+      // To align dates across charts, we convert: source logical → time → target logical.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const chartTimeInfo = new Map<any, { firstTs: number; secPerBar: number }>();
+      const dateToTs = (d: string) => new Date(d).getTime() / 1000;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      function registerChart(chart: any, dates: string[]) {
+        if (dates.length === 0) return;
+        const first = dateToTs(dates[0]);
+        const spb = dates.length > 1 ? (dateToTs(dates[dates.length - 1]) - first) / (dates.length - 1) : 86400;
+        chartTimeInfo.set(chart, { firstTs: first, secPerBar: spb });
+      }
+
       // ─── MAIN CHART ──────────────────────────────────────────────────
       const mainContainer = mainContainerRef.current;
       const mainChart = createChart(
@@ -208,6 +224,7 @@ export function KLineChart({
         close: p.close,
       }));
       candleSeries.setData(candleData as Parameters<typeof candleSeries.setData>[0]);
+      registerChart(mainChart, priceData.map((p) => p.date));
 
       // Volume histogram
       const volumeSeries = mainChart.addSeries(HistogramSeries, {
@@ -309,7 +326,7 @@ export function KLineChart({
         const rsiContainer = rsiContainerRef.current;
         const rsiChart = createChart(
           rsiContainer,
-          makeChartOptions(rsiContainer.clientWidth, 120, isLast('rsi'))
+          makeChartOptions(rsiContainer.clientWidth, 120, isLast('rsi'), false)
         );
         rsiChartRef.current = rsiChart;
 
@@ -322,6 +339,7 @@ export function KLineChart({
 
         const rsiLineData = indicators.rsi.map((d) => ({ time: d.date, value: d.value }));
         rsiSeries.setData(rsiLineData as Parameters<typeof rsiSeries.setData>[0]);
+        registerChart(rsiChart, indicators.rsi.map((d) => d.date));
 
         // Reference lines at 30 and 70
         const rsiRef30 = rsiChart.addSeries(LineSeries, {
@@ -362,7 +380,7 @@ export function KLineChart({
         const macdContainer = macdContainerRef.current;
         const macdChart = createChart(
           macdContainer,
-          makeChartOptions(macdContainer.clientWidth, 120, isLast('macd'))
+          makeChartOptions(macdContainer.clientWidth, 120, isLast('macd'), false)
         );
         macdChartRef.current = macdChart;
 
@@ -401,6 +419,7 @@ export function KLineChart({
           })) as Parameters<typeof histSeries.setData>[0]
         );
 
+        registerChart(macdChart, indicators.macd.map((d) => d.date));
         macdChart.timeScale().fitContent();
       }
 
@@ -409,7 +428,7 @@ export function KLineChart({
         const kdContainer = kdContainerRef.current;
         const kdChart = createChart(
           kdContainer,
-          makeChartOptions(kdContainer.clientWidth, 120, isLast('kd'))
+          makeChartOptions(kdContainer.clientWidth, 120, isLast('kd'), false)
         );
         kdChartRef.current = kdChart;
 
@@ -464,6 +483,7 @@ export function KLineChart({
           scaleMargins: { top: 0.05, bottom: 0.05 },
         });
 
+        registerChart(kdChart, indicators.kd.map((d) => d.date));
         kdChart.timeScale().fitContent();
       }
 
@@ -477,7 +497,7 @@ export function KLineChart({
         const container = foreignContainerRef.current;
         const chart = createChart(
           container,
-          makeChartOptions(container.clientWidth, 150, isLast('foreign'))
+          makeChartOptions(container.clientWidth, 150, isLast('foreign'), false)
         );
         foreignChartRef.current = chart;
 
@@ -497,6 +517,7 @@ export function KLineChart({
             color: d.foreign.net >= 0 ? '#3B82F6' : 'rgba(59, 130, 246, 0.4)',
           })) as Parameters<typeof foreignSeries.setData>[0]
         );
+        registerChart(chart, sorted.map((d) => d.date));
 
         chart.timeScale().fitContent();
       }
@@ -511,7 +532,7 @@ export function KLineChart({
         const container = trustContainerRef.current;
         const chart = createChart(
           container,
-          makeChartOptions(container.clientWidth, 150, isLast('trust'))
+          makeChartOptions(container.clientWidth, 150, isLast('trust'), false)
         );
         trustChartRef.current = chart;
 
@@ -531,6 +552,7 @@ export function KLineChart({
             color: d.trust.net >= 0 ? '#F97316' : 'rgba(249, 115, 22, 0.4)',
           })) as Parameters<typeof trustSeries.setData>[0]
         );
+        registerChart(chart, sorted.map((d) => d.date));
 
         chart.timeScale().fitContent();
       }
@@ -545,7 +567,7 @@ export function KLineChart({
         const container = dealerContainerRef.current;
         const chart = createChart(
           container,
-          makeChartOptions(container.clientWidth, 150, isLast('dealer'))
+          makeChartOptions(container.clientWidth, 150, isLast('dealer'), false)
         );
         dealerChartRef.current = chart;
 
@@ -565,6 +587,7 @@ export function KLineChart({
             color: d.dealer.net >= 0 ? '#A855F7' : 'rgba(168, 85, 247, 0.4)',
           })) as Parameters<typeof dealerSeries.setData>[0]
         );
+        registerChart(chart, sorted.map((d) => d.date));
 
         chart.timeScale().fitContent();
       }
@@ -579,7 +602,7 @@ export function KLineChart({
         const container = marginContainerRef.current;
         const chart = createChart(
           container,
-          makeChartOptions(container.clientWidth, 150, isLast('margin'))
+          makeChartOptions(container.clientWidth, 150, isLast('margin'), false)
         );
         marginChartRef.current = chart;
 
@@ -608,12 +631,14 @@ export function KLineChart({
         shortSeries.setData(
           sorted.map((d) => ({ time: d.date, value: d.short_balance })) as Parameters<typeof shortSeries.setData>[0]
         );
+        registerChart(chart, sorted.map((d) => d.date));
 
         chart.timeScale().fitContent();
       }
 
       // ─── Sync system ──────────────────────────────────────────────────
-      const syncingRef = { current: false };
+      // Sub-charts have handleScroll/handleScale disabled, so only main chart
+      // drives the time axis. This avoids feedback loops entirely.
 
       // Collect all active sub-charts
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -626,33 +651,28 @@ export function KLineChart({
       if (dealerChartRef.current) allSubCharts.push({ chart: dealerChartRef.current, lead: dealerLeadRef.current });
       if (marginChartRef.current) allSubCharts.push({ chart: marginChartRef.current, lead: marginLeadRef.current });
 
-      // Time-based range sync (works correctly across charts with different data densities)
-      const syncTimeRange = (sourceChart: any, targetCharts: any[]) => {
-        if (syncingRef.current) return;
-        const range = sourceChart.timeScale().getVisibleRange();
-        if (!range) return;
-        syncingRef.current = true;
-        try {
-          for (const target of targetCharts) {
-            target.timeScale().setVisibleRange(range);
+      // Main → all subs: convert main logical → time → sub logical
+      // This aligns dates across charts with different bar counts
+      const mainInfo = chartTimeInfo.get(mainChart);
+      if (mainInfo) {
+        mainChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+          const logicalRange = mainChart.timeScale().getVisibleLogicalRange();
+          if (!logicalRange) return;
+          // Main logical → time
+          const timeFrom = mainInfo.firstTs + logicalRange.from * mainInfo.secPerBar;
+          const timeTo = mainInfo.firstTs + logicalRange.to * mainInfo.secPerBar;
+          for (const { chart } of allSubCharts) {
+            const subInfo = chartTimeInfo.get(chart);
+            if (!subInfo) continue;
+            try {
+              // Time → sub logical
+              const subFrom = (timeFrom - subInfo.firstTs) / subInfo.secPerBar;
+              const subTo = (timeTo - subInfo.firstTs) / subInfo.secPerBar;
+              chart.timeScale().setVisibleLogicalRange({ from: subFrom, to: subTo });
+            } catch {
+              // ignore
+            }
           }
-        } catch {
-          // ignore
-        } finally {
-          syncingRef.current = false;
-        }
-      };
-
-      // Main -> all subs
-      mainChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
-        syncTimeRange(mainChart, allSubCharts.map(s => s.chart));
-      });
-
-      // Any sub -> main + all others
-      for (const sub of allSubCharts) {
-        sub.chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
-          const targets = [mainChart, ...allSubCharts.filter(o => o.chart !== sub.chart).map(o => o.chart)];
-          syncTimeRange(sub.chart, targets);
         });
       }
 

@@ -105,8 +105,13 @@ export async function GET(
     const lows = validRows.map((r) => Number(r.low));
     const dates = validRows.map((r) => r.date as string);
 
-    // Determine the slice start index: we want the last `days` rows
-    const sliceStart = Math.max(0, validRows.length - days);
+    // Determine the slice start index using calendar-date cutoff
+    // `days` is calendar days (e.g. 180 for 6m), not trading days
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoffStr = cutoffDate.toISOString().slice(0, 10); // YYYY-MM-DD
+    let sliceStart = validRows.findIndex((r) => (r.date as string) >= cutoffStr);
+    if (sliceStart < 0) sliceStart = validRows.length; // no rows in range
 
     // Build price output (only requested days)
     const prices = validRows.slice(sliceStart).map((r) => ({
