@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { StockHeader } from './StockHeader';
 import { KLineChart } from './KLineChart';
 import { NewsTab } from './NewsTab';
+import { RevenueTable } from './RevenueTable';
+import { FinancialTable } from './FinancialTable';
+import { DividendTable } from './DividendTable';
 import type {
   TimeRange,
   MAKey,
   TechnicalSubplotKey,
-  FundamentalOverlayKey,
   ChipsOverlayKey,
   PriceData,
   IndicatorsResponse,
@@ -20,7 +22,6 @@ import {
   TIME_RANGES,
   MA_KEYS,
   TECHNICAL_SUBPLOT_KEYS,
-  FUNDAMENTAL_OVERLAY_KEYS,
   CHIPS_OVERLAY_KEYS,
   RANGE_PARAMS,
 } from './types';
@@ -48,16 +49,26 @@ export interface StockInfo {
   } | null;
 }
 
+type BottomTab = 'news' | 'revenue' | 'financial' | 'dividends';
+
+const BOTTOM_TABS: { key: BottomTab; label: string }[] = [
+  { key: 'news', label: '新聞' },
+  { key: 'revenue', label: '月營收' },
+  { key: 'financial', label: '財報' },
+  { key: 'dividends', label: '股利' },
+];
+
 export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
   // ─── State ──────────────────────────────────────────────────────────────────
   const [timeRange, setTimeRange] = useState<TimeRange>('6m');
   const [enabledMAs, setEnabledMAs] = useState<Set<MAKey>>(new Set(['ma5', 'ma20']));
   const [enabledSubplots, setEnabledSubplots] = useState<Set<TechnicalSubplotKey>>(new Set());
-  const [enabledOverlays, setEnabledOverlays] = useState<Set<FundamentalOverlayKey | ChipsOverlayKey>>(new Set());
+  const [enabledOverlays, setEnabledOverlays] = useState<Set<ChipsOverlayKey>>(new Set());
   const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [indicators, setIndicators] = useState<IndicatorsResponse>({});
   const [overlayData, setOverlayData] = useState<OverlayData>({});
   const [loading, setLoading] = useState(true);
+  const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>('news');
 
   // ─── Toggle handlers ────────────────────────────────────────────────────────
   const toggleMA = useCallback((key: MAKey) => {
@@ -76,7 +87,7 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
     });
   }, []);
 
-  const toggleOverlay = useCallback((key: FundamentalOverlayKey | ChipsOverlayKey) => {
+  const toggleOverlay = useCallback((key: ChipsOverlayKey) => {
     setEnabledOverlays((prev) => {
       const n = new Set(prev);
       n.has(key) ? n.delete(key) : n.add(key);
@@ -119,7 +130,7 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
     };
   }, [stockInfo.stock_id, timeRange, enabledMAs, enabledSubplots]);
 
-  // ─── Effect 2: overlay data ────────────────────────────────────────────────
+  // ─── Effect 2: chips overlay data ─────────────────────────────────────────
   useEffect(() => {
     if (enabledOverlays.size === 0) {
       setOverlayData({});
@@ -127,14 +138,14 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
     }
 
     let cancelled = false;
-    const { days, months, quarters } = RANGE_PARAMS[timeRange];
+    const { days } = RANGE_PARAMS[timeRange];
     const stockId = stockInfo.stock_id;
 
     async function fetchOverlays() {
       const fetches: Promise<void>[] = [];
       const result: OverlayData = {};
 
-      if (enabledOverlays.has('institutional')) {
+      if (enabledOverlays.has('foreign') || enabledOverlays.has('trust') || enabledOverlays.has('dealer')) {
         fetches.push(
           fetch(`/api/stocks/${stockId}/institutional?days=${days}`)
             .then((r) => (r.ok ? r.json() : null))
@@ -151,39 +162,6 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
             .then((r) => (r.ok ? r.json() : null))
             .then((json) => {
               if (json && !cancelled) result.margin = json.data;
-            })
-            .catch(() => {})
-        );
-      }
-
-      if (enabledOverlays.has('revenue')) {
-        fetches.push(
-          fetch(`/api/stocks/${stockId}/revenue?months=${months}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((json) => {
-              if (json && !cancelled) result.revenue = json.data;
-            })
-            .catch(() => {})
-        );
-      }
-
-      if (enabledOverlays.has('financial')) {
-        fetches.push(
-          fetch(`/api/stocks/${stockId}/financial?quarters=${quarters}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((json) => {
-              if (json && !cancelled) result.financial = json.data;
-            })
-            .catch(() => {})
-        );
-      }
-
-      if (enabledOverlays.has('dividends')) {
-        fetches.push(
-          fetch(`/api/stocks/${stockId}/dividends`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((json) => {
-              if (json && !cancelled) result.dividends = json.data;
             })
             .catch(() => {})
         );
@@ -261,25 +239,6 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
           ))}
         </div>
 
-        {/* 基本面 */}
-        <div className="flex items-center gap-1 flex-wrap">
-          <span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-[#64748B]">基本面</span>
-          {FUNDAMENTAL_OVERLAY_KEYS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => toggleOverlay(f.key)}
-              className={cn(
-                'h-6 rounded px-2 text-[10px] font-medium cursor-pointer transition-colors',
-                enabledOverlays.has(f.key)
-                  ? 'bg-[#F59E0B]/20 text-[#F59E0B]'
-                  : 'bg-[#1E293B] text-[#64748B] hover:text-[#94A3B8]'
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
         {/* 籌碼面 */}
         <div className="flex items-center gap-1 flex-wrap">
           <span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-[#64748B]">籌碼面</span>
@@ -312,8 +271,37 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
         enabledOverlays={enabledOverlays}
       />
 
-      {/* News */}
-      <NewsTab stockId={stockInfo.stock_id} />
+      {/* Bottom tabs: 新聞 / 月營收 / 財報 / 股利 */}
+      <div>
+        <div className="flex gap-1 border-b border-[#334155]">
+          {BOTTOM_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveBottomTab(tab.key)}
+              className={cn(
+                'cursor-pointer px-3 py-2 text-sm font-medium transition-colors',
+                activeBottomTab === tab.key
+                  ? 'border-b-2 border-[#3B82F6] text-[#F8FAFC]'
+                  : 'text-[#64748B] hover:text-[#94A3B8]'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="pt-3">
+          {activeBottomTab === 'news' && <NewsTab stockId={stockInfo.stock_id} />}
+          {activeBottomTab === 'revenue' && (
+            <RevenueTable stockId={stockInfo.stock_id} timeRange={timeRange} />
+          )}
+          {activeBottomTab === 'financial' && (
+            <FinancialTable stockId={stockInfo.stock_id} timeRange={timeRange} />
+          )}
+          {activeBottomTab === 'dividends' && (
+            <DividendTable stockId={stockInfo.stock_id} />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

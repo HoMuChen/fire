@@ -53,17 +53,12 @@ export const TECHNICAL_SUBPLOT_KEYS: { key: TechnicalSubplotKey; label: string }
 
 // ─── Fundamental & Chips Overlay Keys ───────────────────────────────────────
 
-export type FundamentalOverlayKey = 'revenue' | 'financial' | 'dividends';
-export type ChipsOverlayKey = 'institutional' | 'margin';
-
-export const FUNDAMENTAL_OVERLAY_KEYS: { key: FundamentalOverlayKey; label: string }[] = [
-  { key: 'revenue', label: '月營收' },
-  { key: 'financial', label: '財報' },
-  { key: 'dividends', label: '股利' },
-];
+export type ChipsOverlayKey = 'foreign' | 'trust' | 'dealer' | 'margin';
 
 export const CHIPS_OVERLAY_KEYS: { key: ChipsOverlayKey; label: string }[] = [
-  { key: 'institutional', label: '法人' },
+  { key: 'foreign', label: '外資' },
+  { key: 'trust', label: '投信' },
+  { key: 'dealer', label: '自營商' },
   { key: 'margin', label: '融資融券' },
 ];
 

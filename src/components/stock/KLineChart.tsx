@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import type {
   MAKey,
   TechnicalSubplotKey,
-  FundamentalOverlayKey,
   ChipsOverlayKey,
   PriceData,
   MAData,
@@ -24,7 +23,7 @@ export interface KLineChartProps {
   enabledMAs: Set<MAKey>;
   enabledSubplots: Set<TechnicalSubplotKey>;
   overlayData: OverlayData;
-  enabledOverlays: Set<FundamentalOverlayKey | ChipsOverlayKey>;
+  enabledOverlays: Set<ChipsOverlayKey>;
 }
 
 // ─── Local Constants ────────────────────────────────────────────────────────
@@ -69,7 +68,7 @@ function formatVolume(v: number): string {
 
 // ─── Subplot order for isLast logic ─────────────────────────────────────────
 
-const SUBPLOT_ORDER = ['rsi', 'macd', 'kd', 'institutional', 'margin', 'revenue', 'financial', 'dividends'] as const;
+const SUBPLOT_ORDER = ['rsi', 'macd', 'kd', 'foreign', 'trust', 'dealer', 'margin'] as const;
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -89,11 +88,10 @@ export function KLineChart({
   const rsiContainerRef = useRef<HTMLDivElement>(null);
   const macdContainerRef = useRef<HTMLDivElement>(null);
   const kdContainerRef = useRef<HTMLDivElement>(null);
-  const institutionalContainerRef = useRef<HTMLDivElement>(null);
+  const foreignContainerRef = useRef<HTMLDivElement>(null);
+  const trustContainerRef = useRef<HTMLDivElement>(null);
+  const dealerContainerRef = useRef<HTMLDivElement>(null);
   const marginContainerRef = useRef<HTMLDivElement>(null);
-  const revenueContainerRef = useRef<HTMLDivElement>(null);
-  const financialContainerRef = useRef<HTMLDivElement>(null);
-  const dividendsContainerRef = useRef<HTMLDivElement>(null);
 
   // ─── Refs: chart instances ────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,15 +103,13 @@ export function KLineChart({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const kdChartRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const institutionalChartRef = useRef<any>(null);
+  const foreignChartRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const trustChartRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dealerChartRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marginChartRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const revenueChartRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const financialChartRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dividendsChartRef = useRef<any>(null);
 
   // ─── Refs: lead series for crosshair sync ─────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,15 +121,13 @@ export function KLineChart({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const kdKSeriesRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const institutionalLeadRef = useRef<any>(null);
+  const foreignLeadRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const trustLeadRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dealerLeadRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marginLeadRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const revenueLeadRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const financialLeadRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dividendsLeadRef = useRef<any>(null);
 
   // Store prices for crosshair lookup
   const pricesRef = useRef<PriceData[]>([]);
@@ -157,8 +151,8 @@ export function KLineChart({
       // ─── Cleanup previous charts ─────────────────────────────────────
       const allChartRefs = [
         mainChartRef, rsiChartRef, macdChartRef, kdChartRef,
-        institutionalChartRef, marginChartRef, revenueChartRef,
-        financialChartRef, dividendsChartRef,
+        foreignChartRef, trustChartRef, dealerChartRef,
+        marginChartRef,
       ];
       for (const ref of allChartRefs) {
         if (ref.current) {
@@ -169,8 +163,8 @@ export function KLineChart({
 
       const allSeriesRefs = [
         mainCandleSeriesRef, rsiLineSeriesRef, macdDifSeriesRef, kdKSeriesRef,
-        institutionalLeadRef, marginLeadRef, revenueLeadRef,
-        financialLeadRef, dividendsLeadRef,
+        foreignLeadRef, trustLeadRef, dealerLeadRef,
+        marginLeadRef,
       ];
       for (const ref of allSeriesRefs) {
         ref.current = null;
@@ -181,7 +175,7 @@ export function KLineChart({
       // ─── Determine last subplot for timeScale visibility ──────────────
       const activeSubplots = SUBPLOT_ORDER.filter((k) => {
         if (k === 'rsi' || k === 'macd' || k === 'kd') return enabledSubplots.has(k as TechnicalSubplotKey);
-        return enabledOverlays.has(k as FundamentalOverlayKey | ChipsOverlayKey);
+        return enabledOverlays.has(k as ChipsOverlayKey);
       });
       const lastSubplot = activeSubplots[activeSubplots.length - 1] ?? null;
       const hasAnySubplots = activeSubplots.length > 0;
@@ -473,30 +467,28 @@ export function KLineChart({
         kdChart.timeScale().fitContent();
       }
 
-      // ─── INSTITUTIONAL SUBPLOT ────────────────────────────────────────
+      // ─── FOREIGN SUBPLOT (外資) ─────────────────────────────────────
       if (
-        enabledOverlays.has('institutional') &&
-        institutionalContainerRef.current &&
+        enabledOverlays.has('foreign') &&
+        foreignContainerRef.current &&
         overlayData.institutional &&
         overlayData.institutional.length > 0
       ) {
-        const container = institutionalContainerRef.current;
+        const container = foreignContainerRef.current;
         const chart = createChart(
           container,
-          makeChartOptions(container.clientWidth, 150, isLast('institutional'))
+          makeChartOptions(container.clientWidth, 150, isLast('foreign'))
         );
-        institutionalChartRef.current = chart;
+        foreignChartRef.current = chart;
 
         const sorted = [...overlayData.institutional].sort(
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );
 
-        // Foreign net (histogram)
         const foreignSeries = chart.addSeries(HistogramSeries, {
-          color: '#3B82F6',
           priceScaleId: 'right',
         });
-        institutionalLeadRef.current = foreignSeries;
+        foreignLeadRef.current = foreignSeries;
 
         foreignSeries.setData(
           sorted.map((d) => ({
@@ -506,24 +498,72 @@ export function KLineChart({
           })) as Parameters<typeof foreignSeries.setData>[0]
         );
 
-        // Trust net (line)
-        const trustSeries = chart.addSeries(LineSeries, {
-          color: '#F97316',
-          lineWidth: 1,
-          priceScaleId: 'right',
-        });
-        trustSeries.setData(
-          sorted.map((d) => ({ time: d.date, value: d.trust.net / 1000 })) as Parameters<typeof trustSeries.setData>[0]
+        chart.timeScale().fitContent();
+      }
+
+      // ─── TRUST SUBPLOT (投信) ──────────────────────────────────────
+      if (
+        enabledOverlays.has('trust') &&
+        trustContainerRef.current &&
+        overlayData.institutional &&
+        overlayData.institutional.length > 0
+      ) {
+        const container = trustContainerRef.current;
+        const chart = createChart(
+          container,
+          makeChartOptions(container.clientWidth, 150, isLast('trust'))
+        );
+        trustChartRef.current = chart;
+
+        const sorted = [...overlayData.institutional].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );
 
-        // Dealer net (line)
-        const dealerSeries = chart.addSeries(LineSeries, {
-          color: '#A855F7',
-          lineWidth: 1,
+        const trustSeries = chart.addSeries(HistogramSeries, {
           priceScaleId: 'right',
         });
+        trustLeadRef.current = trustSeries;
+
+        trustSeries.setData(
+          sorted.map((d) => ({
+            time: d.date,
+            value: d.trust.net / 1000,
+            color: d.trust.net >= 0 ? '#F97316' : 'rgba(249, 115, 22, 0.4)',
+          })) as Parameters<typeof trustSeries.setData>[0]
+        );
+
+        chart.timeScale().fitContent();
+      }
+
+      // ─── DEALER SUBPLOT (自營商) ───────────────────────────────────
+      if (
+        enabledOverlays.has('dealer') &&
+        dealerContainerRef.current &&
+        overlayData.institutional &&
+        overlayData.institutional.length > 0
+      ) {
+        const container = dealerContainerRef.current;
+        const chart = createChart(
+          container,
+          makeChartOptions(container.clientWidth, 150, isLast('dealer'))
+        );
+        dealerChartRef.current = chart;
+
+        const sorted = [...overlayData.institutional].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+
+        const dealerSeries = chart.addSeries(HistogramSeries, {
+          priceScaleId: 'right',
+        });
+        dealerLeadRef.current = dealerSeries;
+
         dealerSeries.setData(
-          sorted.map((d) => ({ time: d.date, value: d.dealer.net / 1000 })) as Parameters<typeof dealerSeries.setData>[0]
+          sorted.map((d) => ({
+            time: d.date,
+            value: d.dealer.net / 1000,
+            color: d.dealer.net >= 0 ? '#A855F7' : 'rgba(168, 85, 247, 0.4)',
+          })) as Parameters<typeof dealerSeries.setData>[0]
         );
 
         chart.timeScale().fitContent();
@@ -572,127 +612,6 @@ export function KLineChart({
         chart.timeScale().fitContent();
       }
 
-      // ─── REVENUE SUBPLOT ──────────────────────────────────────────────
-      if (
-        enabledOverlays.has('revenue') &&
-        revenueContainerRef.current &&
-        overlayData.revenue &&
-        overlayData.revenue.length > 0
-      ) {
-        const container = revenueContainerRef.current;
-        const chart = createChart(
-          container,
-          makeChartOptions(container.clientWidth, 150, isLast('revenue'))
-        );
-        revenueChartRef.current = chart;
-
-        const sorted = [...overlayData.revenue].sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-
-        const revSeries = chart.addSeries(HistogramSeries, {
-          priceScaleId: 'right',
-        });
-        revenueLeadRef.current = revSeries;
-
-        revSeries.setData(
-          sorted.map((d) => ({
-            time: d.date,
-            value: d.revenue / 1e8,
-            color: (d.yoy_percent !== null && d.yoy_percent >= 0) ? '#EF4444' : '#22C55E',
-          })) as Parameters<typeof revSeries.setData>[0]
-        );
-
-        chart.timeScale().fitContent();
-      }
-
-      // ─── FINANCIAL SUBPLOT ────────────────────────────────────────────
-      if (
-        enabledOverlays.has('financial') &&
-        financialContainerRef.current &&
-        overlayData.financial &&
-        overlayData.financial.length > 0
-      ) {
-        const container = financialContainerRef.current;
-        const chart = createChart(
-          container,
-          makeChartOptions(container.clientWidth, 150, isLast('financial'))
-        );
-        financialChartRef.current = chart;
-
-        const sorted = [...overlayData.financial].sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-
-        // Net Income histogram
-        const netIncomeSeries = chart.addSeries(HistogramSeries, {
-          priceScaleId: 'right',
-        });
-        financialLeadRef.current = netIncomeSeries;
-
-        netIncomeSeries.setData(
-          sorted
-            .filter((d) => d.income && d.income.NetIncome !== undefined)
-            .map((d) => ({
-              time: d.date,
-              value: d.income.NetIncome / 1e8,
-              color: d.income.NetIncome >= 0 ? '#EF4444' : '#22C55E',
-            })) as Parameters<typeof netIncomeSeries.setData>[0]
-        );
-
-        // Revenue line overlay
-        const revenueOverlay = sorted.filter((d) => d.income && d.income.Revenue !== undefined);
-        if (revenueOverlay.length > 0) {
-          const revLineSeries = chart.addSeries(LineSeries, {
-            color: '#3B82F6',
-            lineWidth: 1,
-            priceScaleId: 'right',
-          });
-          revLineSeries.setData(
-            revenueOverlay.map((d) => ({
-              time: d.date,
-              value: d.income.Revenue / 1e8,
-            })) as Parameters<typeof revLineSeries.setData>[0]
-          );
-        }
-
-        chart.timeScale().fitContent();
-      }
-
-      // ─── DIVIDENDS SUBPLOT ────────────────────────────────────────────
-      if (
-        enabledOverlays.has('dividends') &&
-        dividendsContainerRef.current &&
-        overlayData.dividends &&
-        overlayData.dividends.length > 0
-      ) {
-        const container = dividendsContainerRef.current;
-        const chart = createChart(
-          container,
-          makeChartOptions(container.clientWidth, 150, isLast('dividends'))
-        );
-        dividendsChartRef.current = chart;
-
-        const sorted = [...overlayData.dividends].sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-
-        const divSeries = chart.addSeries(HistogramSeries, {
-          color: '#FACC15',
-          priceScaleId: 'right',
-        });
-        dividendsLeadRef.current = divSeries;
-
-        divSeries.setData(
-          sorted.map((d) => ({
-            time: d.date,
-            value: d.total_dividend,
-          })) as Parameters<typeof divSeries.setData>[0]
-        );
-
-        chart.timeScale().fitContent();
-      }
-
       // ─── Sync system ──────────────────────────────────────────────────
       const syncingRef = { current: false };
 
@@ -702,44 +621,38 @@ export function KLineChart({
       if (rsiChartRef.current) allSubCharts.push({ chart: rsiChartRef.current, lead: rsiLineSeriesRef.current });
       if (macdChartRef.current) allSubCharts.push({ chart: macdChartRef.current, lead: macdDifSeriesRef.current });
       if (kdChartRef.current) allSubCharts.push({ chart: kdChartRef.current, lead: kdKSeriesRef.current });
-      if (institutionalChartRef.current) allSubCharts.push({ chart: institutionalChartRef.current, lead: institutionalLeadRef.current });
+      if (foreignChartRef.current) allSubCharts.push({ chart: foreignChartRef.current, lead: foreignLeadRef.current });
+      if (trustChartRef.current) allSubCharts.push({ chart: trustChartRef.current, lead: trustLeadRef.current });
+      if (dealerChartRef.current) allSubCharts.push({ chart: dealerChartRef.current, lead: dealerLeadRef.current });
       if (marginChartRef.current) allSubCharts.push({ chart: marginChartRef.current, lead: marginLeadRef.current });
-      if (revenueChartRef.current) allSubCharts.push({ chart: revenueChartRef.current, lead: revenueLeadRef.current });
-      if (financialChartRef.current) allSubCharts.push({ chart: financialChartRef.current, lead: financialLeadRef.current });
-      if (dividendsChartRef.current) allSubCharts.push({ chart: dividendsChartRef.current, lead: dividendsLeadRef.current });
 
-      // Main -> all subs (visible logical range)
-      mainChart.timeScale().subscribeVisibleLogicalRangeChange((range: { from: number; to: number } | null) => {
-        if (syncingRef.current || !range) return;
+      // Time-based range sync (works correctly across charts with different data densities)
+      const syncTimeRange = (sourceChart: any, targetCharts: any[]) => {
+        if (syncingRef.current) return;
+        const range = sourceChart.timeScale().getVisibleRange();
+        if (!range) return;
         syncingRef.current = true;
         try {
-          for (const { chart } of allSubCharts) {
-            chart.timeScale().setVisibleLogicalRange(range);
+          for (const target of targetCharts) {
+            target.timeScale().setVisibleRange(range);
           }
         } catch {
           // ignore
         } finally {
           syncingRef.current = false;
         }
+      };
+
+      // Main -> all subs
+      mainChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+        syncTimeRange(mainChart, allSubCharts.map(s => s.chart));
       });
 
       // Any sub -> main + all others
       for (const sub of allSubCharts) {
-        sub.chart.timeScale().subscribeVisibleLogicalRangeChange((range: { from: number; to: number } | null) => {
-          if (syncingRef.current || !range) return;
-          syncingRef.current = true;
-          try {
-            mainChart.timeScale().setVisibleLogicalRange(range);
-            for (const other of allSubCharts) {
-              if (other.chart !== sub.chart) {
-                other.chart.timeScale().setVisibleLogicalRange(range);
-              }
-            }
-          } catch {
-            // ignore
-          } finally {
-            syncingRef.current = false;
-          }
+        sub.chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+          const targets = [mainChart, ...allSubCharts.filter(o => o.chart !== sub.chart).map(o => o.chart)];
+          syncTimeRange(sub.chart, targets);
         });
       }
 
@@ -767,8 +680,8 @@ export function KLineChart({
       cancelled = true;
       const allChartRefs = [
         mainChartRef, rsiChartRef, macdChartRef, kdChartRef,
-        institutionalChartRef, marginChartRef, revenueChartRef,
-        financialChartRef, dividendsChartRef,
+        foreignChartRef, trustChartRef, dealerChartRef,
+        marginChartRef,
       ];
       for (const ref of allChartRefs) {
         if (ref.current) {
@@ -778,8 +691,8 @@ export function KLineChart({
       }
       const allSeriesRefs = [
         mainCandleSeriesRef, rsiLineSeriesRef, macdDifSeriesRef, kdKSeriesRef,
-        institutionalLeadRef, marginLeadRef, revenueLeadRef,
-        financialLeadRef, dividendsLeadRef,
+        foreignLeadRef, trustLeadRef, dealerLeadRef,
+        marginLeadRef,
       ];
       for (const ref of allSeriesRefs) {
         ref.current = null;
@@ -794,11 +707,10 @@ export function KLineChart({
       { ref: rsiContainerRef, chart: rsiChartRef },
       { ref: macdContainerRef, chart: macdChartRef },
       { ref: kdContainerRef, chart: kdChartRef },
-      { ref: institutionalContainerRef, chart: institutionalChartRef },
+      { ref: foreignContainerRef, chart: foreignChartRef },
+      { ref: trustContainerRef, chart: trustChartRef },
+      { ref: dealerContainerRef, chart: dealerChartRef },
       { ref: marginContainerRef, chart: marginChartRef },
-      { ref: revenueContainerRef, chart: revenueChartRef },
-      { ref: financialContainerRef, chart: financialChartRef },
-      { ref: dividendsContainerRef, chart: dividendsChartRef },
     ];
 
     const observer = new ResizeObserver((entries) => {
@@ -866,58 +778,52 @@ export function KLineChart({
         {/* RSI subplot container */}
         {enabledSubplots.has('rsi') && (
           <div ref={rsiContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 120 }}>
-            <div className="absolute right-12 mt-1 text-[10px] text-[#94A3B8]">RSI</div>
+            <div className="pointer-events-none absolute left-2 top-1 z-10 rounded bg-[#FACC15]/15 px-1.5 py-0.5 text-xs font-medium text-[#FACC15]">RSI</div>
           </div>
         )}
 
         {/* MACD subplot container */}
         {enabledSubplots.has('macd') && (
           <div ref={macdContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 120 }}>
-            <div className="absolute right-12 mt-1 text-[10px] text-[#94A3B8]">MACD</div>
+            <div className="pointer-events-none absolute left-2 top-1 z-10 rounded bg-[#3B82F6]/15 px-1.5 py-0.5 text-xs font-medium text-[#3B82F6]">MACD</div>
           </div>
         )}
 
         {/* KD subplot container */}
         {enabledSubplots.has('kd') && (
           <div ref={kdContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 120 }}>
-            <div className="absolute right-12 mt-1 text-[10px] text-[#94A3B8]">KD</div>
+            <div className="pointer-events-none absolute left-2 top-1 z-10 rounded bg-[#3B82F6]/15 px-1.5 py-0.5 text-xs font-medium text-[#3B82F6]">KD</div>
           </div>
         )}
 
-        {/* Institutional subplot container */}
-        {enabledOverlays.has('institutional') && (
-          <div ref={institutionalContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 150 }}>
-            <div className="absolute right-12 mt-1 text-[10px] text-[#94A3B8]">法人</div>
+        {/* Foreign subplot container */}
+        {enabledOverlays.has('foreign') && (
+          <div ref={foreignContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 150 }}>
+            <div className="pointer-events-none absolute left-2 top-1 z-10 rounded bg-[#3B82F6]/15 px-1.5 py-0.5 text-xs font-medium text-[#3B82F6]">外資</div>
+          </div>
+        )}
+
+        {/* Trust subplot container */}
+        {enabledOverlays.has('trust') && (
+          <div ref={trustContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 150 }}>
+            <div className="pointer-events-none absolute left-2 top-1 z-10 rounded bg-[#F97316]/15 px-1.5 py-0.5 text-xs font-medium text-[#F97316]">投信</div>
+          </div>
+        )}
+
+        {/* Dealer subplot container */}
+        {enabledOverlays.has('dealer') && (
+          <div ref={dealerContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 150 }}>
+            <div className="pointer-events-none absolute left-2 top-1 z-10 rounded bg-[#A855F7]/15 px-1.5 py-0.5 text-xs font-medium text-[#A855F7]">自營商</div>
           </div>
         )}
 
         {/* Margin subplot container */}
         {enabledOverlays.has('margin') && (
           <div ref={marginContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 150 }}>
-            <div className="absolute right-12 mt-1 text-[10px] text-[#94A3B8]">融資融券</div>
+            <div className="pointer-events-none absolute left-2 top-1 z-10 rounded bg-[#EF4444]/15 px-1.5 py-0.5 text-xs font-medium text-[#EF4444]">融資融券</div>
           </div>
         )}
 
-        {/* Revenue subplot container */}
-        {enabledOverlays.has('revenue') && (
-          <div ref={revenueContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 150 }}>
-            <div className="absolute right-12 mt-1 text-[10px] text-[#94A3B8]">月營收</div>
-          </div>
-        )}
-
-        {/* Financial subplot container */}
-        {enabledOverlays.has('financial') && (
-          <div ref={financialContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 150 }}>
-            <div className="absolute right-12 mt-1 text-[10px] text-[#94A3B8]">財報</div>
-          </div>
-        )}
-
-        {/* Dividends subplot container */}
-        {enabledOverlays.has('dividends') && (
-          <div ref={dividendsContainerRef} className="relative w-full border-t border-[#1E293B]" style={{ height: 150 }}>
-            <div className="absolute right-12 mt-1 text-[10px] text-[#94A3B8]">股利</div>
-          </div>
-        )}
       </div>
     </div>
   );
