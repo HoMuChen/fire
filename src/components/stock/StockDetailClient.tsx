@@ -156,96 +156,98 @@ export function StockDetailClient({ stockInfo }: { stockInfo: StockInfo }) {
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="p-4 space-y-4">
-      {/* Header row with time range */}
-      <div className="flex items-start justify-between gap-4">
-        <StockHeader stockInfo={stockInfo} />
-        <div className="flex shrink-0 gap-1">
-          {TIME_RANGES.map((r) => (
-            <Button
-              key={r.key}
-              variant={timeRange === r.key ? 'default' : 'outline'}
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => setTimeRange(r.key)}
-            >
-              {r.label}
-            </Button>
-          ))}
+      <div className="space-y-4">
+        {/* Header row with time range */}
+        <div className="flex items-start justify-between gap-4">
+          <StockHeader stockInfo={stockInfo} />
+          <div className="flex shrink-0 gap-1">
+            {TIME_RANGES.map((r) => (
+              <Button
+                key={r.key}
+                variant={timeRange === r.key ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setTimeRange(r.key)}
+              >
+                {r.label}
+              </Button>
+            ))}
+          </div>
         </div>
+
+        {/* Toggle groups */}
+        <div className="space-y-1.5">
+          {/* 技術指標 */}
+          <div className="flex items-center gap-1 flex-wrap">
+            <span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-[#64748B]">技術指標</span>
+            {MA_KEYS.map((ma) => (
+              <button
+                key={ma.key}
+                onClick={() => toggleMA(ma.key)}
+                className={cn(
+                  'h-6 rounded px-2 text-[10px] font-medium cursor-pointer transition-colors',
+                  enabledMAs.has(ma.key)
+                    ? 'text-white'
+                    : 'bg-[#1E293B] text-[#64748B] hover:text-[#94A3B8]'
+                )}
+                style={
+                  enabledMAs.has(ma.key)
+                    ? { backgroundColor: ma.color + '33', color: ma.color }
+                    : undefined
+                }
+              >
+                {ma.label}
+              </button>
+            ))}
+            <span className="mx-1 h-3 w-px bg-[#334155]" />
+            {TECHNICAL_SUBPLOT_KEYS.map((sub) => (
+              <button
+                key={sub.key}
+                onClick={() => toggleSubplot(sub.key)}
+                className={cn(
+                  'h-6 rounded px-2 text-[10px] font-medium cursor-pointer transition-colors',
+                  enabledSubplots.has(sub.key)
+                    ? 'bg-[#3B82F6]/20 text-[#3B82F6]'
+                    : 'bg-[#1E293B] text-[#64748B] hover:text-[#94A3B8]'
+                )}
+              >
+                {sub.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 籌碼面 */}
+          <div className="flex items-center gap-1 flex-wrap">
+            <span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-[#64748B]">籌碼面</span>
+            {CHIPS_OVERLAY_KEYS.map((c) => (
+              <button
+                key={c.key}
+                onClick={() => toggleOverlay(c.key)}
+                className={cn(
+                  'h-6 rounded px-2 text-[10px] font-medium cursor-pointer transition-colors',
+                  enabledOverlays.has(c.key)
+                    ? 'bg-[#22C55E]/20 text-[#22C55E]'
+                    : 'bg-[#1E293B] text-[#64748B] hover:text-[#94A3B8]'
+                )}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Chart */}
+        <KLineChart
+          stockId={stockInfo.stock_id}
+          priceData={priceData}
+          indicators={indicators}
+          loading={loading}
+          enabledMAs={enabledMAs}
+          enabledSubplots={enabledSubplots}
+          overlayData={overlayData}
+          enabledOverlays={enabledOverlays}
+        />
       </div>
-
-      {/* Toggle groups */}
-      <div className="space-y-1.5">
-        {/* 技術指標 */}
-        <div className="flex items-center gap-1 flex-wrap">
-          <span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-[#64748B]">技術指標</span>
-          {MA_KEYS.map((ma) => (
-            <button
-              key={ma.key}
-              onClick={() => toggleMA(ma.key)}
-              className={cn(
-                'h-6 rounded px-2 text-[10px] font-medium cursor-pointer transition-colors',
-                enabledMAs.has(ma.key)
-                  ? 'text-white'
-                  : 'bg-[#1E293B] text-[#64748B] hover:text-[#94A3B8]'
-              )}
-              style={
-                enabledMAs.has(ma.key)
-                  ? { backgroundColor: ma.color + '33', color: ma.color }
-                  : undefined
-              }
-            >
-              {ma.label}
-            </button>
-          ))}
-          <span className="mx-1 h-3 w-px bg-[#334155]" />
-          {TECHNICAL_SUBPLOT_KEYS.map((sub) => (
-            <button
-              key={sub.key}
-              onClick={() => toggleSubplot(sub.key)}
-              className={cn(
-                'h-6 rounded px-2 text-[10px] font-medium cursor-pointer transition-colors',
-                enabledSubplots.has(sub.key)
-                  ? 'bg-[#3B82F6]/20 text-[#3B82F6]'
-                  : 'bg-[#1E293B] text-[#64748B] hover:text-[#94A3B8]'
-              )}
-            >
-              {sub.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 籌碼面 */}
-        <div className="flex items-center gap-1 flex-wrap">
-          <span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-[#64748B]">籌碼面</span>
-          {CHIPS_OVERLAY_KEYS.map((c) => (
-            <button
-              key={c.key}
-              onClick={() => toggleOverlay(c.key)}
-              className={cn(
-                'h-6 rounded px-2 text-[10px] font-medium cursor-pointer transition-colors',
-                enabledOverlays.has(c.key)
-                  ? 'bg-[#22C55E]/20 text-[#22C55E]'
-                  : 'bg-[#1E293B] text-[#64748B] hover:text-[#94A3B8]'
-              )}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Chart */}
-      <KLineChart
-        stockId={stockInfo.stock_id}
-        priceData={priceData}
-        indicators={indicators}
-        loading={loading}
-        enabledMAs={enabledMAs}
-        enabledSubplots={enabledSubplots}
-        overlayData={overlayData}
-        enabledOverlays={enabledOverlays}
-      />
 
       {/* Bottom tabs: 新聞 / 月營收 / 財報 / 股利 */}
       <div>

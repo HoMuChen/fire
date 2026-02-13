@@ -555,18 +555,19 @@ export function KLineChart({
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="rounded-lg border border-[#1E293B] bg-[#0F172A] p-4">
-      <div className="relative">
+    <div className="rounded-lg border border-[#1E293B] bg-[#0F172A]">
+      {/* Main K-line chart — sticky */}
+      <div className="sticky top-0 z-30 relative rounded-t-lg bg-[#0F172A] p-4 pb-0">
         {/* Loading overlay */}
         {loading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0F172A]/80">
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-t-lg bg-[#0F172A]/80">
             <span className="text-sm text-[#94A3B8]">載入中...</span>
           </div>
         )}
 
         {/* Crosshair legend */}
         {crosshairData && (
-          <div className="absolute left-2 top-2 z-20 flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded bg-[#0F172A]/90 px-2 py-1 text-xs">
+          <div className="absolute left-6 top-6 z-20 flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded bg-[#0F172A]/90 px-2 py-1 text-xs">
             <span className="text-[#94A3B8]">{crosshairData.date}</span>
             <span className="text-[#F8FAFC]">
               開 <span className="font-medium">{crosshairData.open.toFixed(2)}</span>
@@ -589,10 +590,11 @@ export function KLineChart({
           </div>
         )}
 
-        {/* Main chart container */}
         <div ref={mainContainerRef} className="w-full" style={{ height: 400 }} />
+      </div>
 
-        {/* Subplot containers — data-driven */}
+      {/* Subplot containers — scrollable below sticky main chart */}
+      <div className="px-4 pb-4">
         {SUBPLOT_ORDER.map((key) => {
           const enabled = isSubplotEnabled(key);
           if (!enabled) return null;
