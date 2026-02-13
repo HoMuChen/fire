@@ -7,6 +7,11 @@ import {
   fetchInstitutional,
   fetchMarginTrading,
   fetchShareholding,
+  fetchMonthRevenue,
+  fetchFinancialStatements,
+  fetchBalanceSheet,
+  fetchCashFlow,
+  fetchDividends,
   fetchNews,
 } from '@/lib/finmind';
 import { formatDate } from '@/lib/utils';
@@ -20,16 +25,17 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient();
   const today = formatDate(new Date());
 
-  // Get all distinct stock IDs from watchlist items
-  const { data: watchlistItems } = await supabase
-    .from('watchlist_items')
-    .select('stock_id');
+  // Get all synced stocks (not just watchlist ones)
+  const { data: syncedStocks } = await supabase
+    .from('stocks')
+    .select('stock_id')
+    .eq('sync_status', 'synced');
 
-  if (!watchlistItems || watchlistItems.length === 0) {
-    return NextResponse.json({ message: 'No stocks in watchlists to sync' });
+  if (!syncedStocks || syncedStocks.length === 0) {
+    return NextResponse.json({ message: 'No synced stocks to update' });
   }
 
-  const stockIds = [...new Set(watchlistItems.map((item) => item.stock_id))];
+  const stockIds = syncedStocks.map((s) => s.stock_id);
   const results: { stock_id: string; status: string; errors?: string[] }[] = [];
 
   for (const stockId of stockIds) {
@@ -116,6 +122,54 @@ export async function POST(request: NextRequest) {
         }));
         const { error } = await supabase.from('foreign_shareholding').upsert(rows, { onConflict: 'stock_id,date' });
         if (error) errors.push(`foreign_shareholding: ${error.message}`);
+      }
+
+      // Fetch monthly revenue
+      const revenue = await fetchMonthRevenue(stockId, today);
+      if (revenue.length > 0) {
+        const rows = revenue.map((r) => ({
+          stock_id: r.stock_id,
+          date: r.date,
+          revenue_year: r.revenue_year,
+          revenue_month: r.revenue_month,
+          revenue: r.revenue,
+        }));
+        const { error } = await supabase
+          .from('monthly_revenue')
+          .upsert(rows, { onConflict: 'stock_id,revenue_year,revenue_month' });
+        if (error) errors.push(`monthly_revenue: ${error.message}`);
+      }
+
+      // Fetch financial statements (income, balance sheet, cash flow)
+      const [income, balance, cashflow] = await Promise.all([
+        fetchFinancialStatements(stockId, today),
+        fetchBalanceSheet(stockId, today),
+        fetchCashFlow(stockId, today),
+      ]);
+      const finRows = [
+        ...income.map((f) => ({ stock_id: f.stock_id, date: f.date, statement_type: 'income' as const, item_name: f.type, value: f.value })),
+        ...balance.map((f) => ({ stock_id: f.stock_id, date: f.date, statement_type: 'balance_sheet' as const, item_name: f.type, value: f.value })),
+        ...cashflow.map((f) => ({ stock_id: f.stock_id, date: f.date, statement_type: 'cash_flow' as const, item_name: f.type, value: f.value })),
+      ];
+      if (finRows.length > 0) {
+        const { error } = await supabase
+          .from('financial_statements')
+          .upsert(finRows, { onConflict: 'stock_id,date,statement_type,item_name' });
+        if (error) errors.push(`financial_statements: ${error.message}`);
+      }
+
+      // Fetch dividends
+      const dividends = await fetchDividends(stockId, today);
+      if (dividends.length > 0) {
+        const rows = dividends.map((d) => ({
+          stock_id: d.stock_id,
+          date: d.date,
+          year: new Date(d.date).getFullYear(),
+          cash_dividend: d.CashEarningsDistribution + d.CashStatutorySurplus,
+          stock_dividend: d.StockEarningsDistribution + d.StockStatutorySurplus,
+        }));
+        const { error } = await supabase.from('dividends').upsert(rows, { onConflict: 'stock_id,date' });
+        if (error) errors.push(`dividends: ${error.message}`);
       }
 
       // Fetch today's news
