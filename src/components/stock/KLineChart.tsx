@@ -465,22 +465,50 @@ export function KLineChart({
         });
       }
 
-      // Crosshair sync from main
+      // Crosshair sync — bidirectional with recursion guard
+      let isSyncing = false;
+
+      // Main → all subcharts
       mainChart.subscribeCrosshairMove((param: { time?: unknown }) => {
+        if (isSyncing) return;
+        isSyncing = true;
         if (param.time) {
           for (const { chart, lead } of allSubCharts) {
-            try {
-              chart.setCrosshairPosition(NaN, param.time, lead);
-            } catch {
-              // ignore sync errors
-            }
+            try { chart.setCrosshairPosition(NaN, param.time, lead); } catch { /* ignore */ }
           }
         } else {
           for (const { chart } of allSubCharts) {
             chart.clearCrosshairPosition();
           }
         }
+        isSyncing = false;
       });
+
+      // Each subchart → main + other subcharts
+      const mainLead = leadsRef.current.get('main');
+      for (const { chart: subChart } of allSubCharts) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        subChart.subscribeCrosshairMove((param: any) => {
+          if (isSyncing) return;
+          isSyncing = true;
+          if (param.time) {
+            if (mainLead) {
+              try { mainChart.setCrosshairPosition(NaN, param.time, mainLead); } catch { /* ignore */ }
+            }
+            for (const { chart, lead } of allSubCharts) {
+              if (chart === subChart) continue;
+              try { chart.setCrosshairPosition(NaN, param.time, lead); } catch { /* ignore */ }
+            }
+          } else {
+            mainChart.clearCrosshairPosition();
+            for (const { chart } of allSubCharts) {
+              if (chart === subChart) continue;
+              chart.clearCrosshairPosition();
+            }
+          }
+          isSyncing = false;
+        });
+      }
     }
 
     renderCharts();
