@@ -1,3 +1,5 @@
+// Cron: 30 18 * * 1-5 (weekdays 18:30 UTC, after daily sync)
+// POST /api/sync/check-alerts  Authorization: Bearer $CRON_SECRET
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyCronSecret } from '@/lib/sync-auth';

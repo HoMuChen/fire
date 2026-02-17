@@ -1,3 +1,5 @@
+// Cron: */15 * * * * (every 15 min, picks one pending stock to backfill)
+// POST /api/sync/stock-init  Authorization: Bearer $CRON_SECRET
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyCronSecret } from '@/lib/sync-auth';

@@ -1,18 +1,20 @@
+// Cron: 0 18 * * 1-5 (weekdays 18:00 UTC = 02:00+8, after market close)
+// POST /api/sync/daily  Authorization: Bearer $CRON_SECRET
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyCronSecret } from '@/lib/sync-auth';
 import {
-  fetchStockPrices,
-  fetchStockPER,
-  fetchInstitutional,
-  fetchMarginTrading,
-  fetchShareholding,
-  fetchMonthRevenue,
-  fetchFinancialStatements,
-  fetchBalanceSheet,
-  fetchCashFlow,
-  fetchDividends,
-  fetchNews,
+  fetchMarketPrices,
+  fetchMarketPER,
+  fetchMarketInstitutional,
+  fetchMarketMarginTrading,
+  fetchMarketShareholding,
+  fetchMarketMonthRevenue,
+  fetchMarketFinancialStatements,
+  fetchMarketBalanceSheet,
+  fetchMarketCashFlow,
+  fetchMarketDividends,
+  fetchMarketNews,
 } from '@/lib/finmind';
 import { formatDate } from '@/lib/utils';
 
@@ -25,7 +27,7 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient();
   const today = formatDate(new Date());
 
-  // Get all synced stocks (not just watchlist ones)
+  // Get all synced stock IDs for filtering full-market results
   const { data: syncedStocks } = await supabase
     .from('stocks')
     .select('stock_id')
@@ -35,16 +37,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'No synced stocks to update' });
   }
 
-  const stockIds = syncedStocks.map((s) => s.stock_id);
-  const results: { stock_id: string; status: string; errors?: string[] }[] = [];
+  const syncedIds = new Set(syncedStocks.map((s) => s.stock_id));
+  const errors: string[] = [];
+  const counts: Record<string, number> = {};
 
-  for (const stockId of stockIds) {
-    const errors: string[] = [];
-    try {
-      // Fetch today's price
-      const prices = await fetchStockPrices(stockId, today, today);
-      if (prices.length > 0) {
-        const rows = prices.map((p) => ({
+  // Helper: filter full-market results to synced stocks only
+  function filterSynced<T extends { stock_id: string }>(rows: T[]): T[] {
+    return rows.filter((r) => syncedIds.has(r.stock_id));
+  }
+
+  // Helper: batch upsert (Supabase has row limits, chunk at 1000)
+  async function batchUpsert(
+    table: string,
+    rows: Record<string, unknown>[],
+    onConflict: string,
+  ) {
+    const BATCH_SIZE = 1000;
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const chunk = rows.slice(i, i + BATCH_SIZE);
+      const { error } = await supabase.from(table).upsert(chunk, { onConflict });
+      if (error) {
+        errors.push(`${table}: ${error.message}`);
+        return;
+      }
+    }
+    counts[table] = (counts[table] ?? 0) + rows.length;
+  }
+
+  try {
+    // 1. Stock prices
+    const prices = filterSynced(await fetchMarketPrices(today, today));
+    if (prices.length > 0) {
+      await batchUpsert(
+        'stock_prices',
+        prices.map((p) => ({
           stock_id: p.stock_id,
           date: p.date,
           open: p.open,
@@ -55,45 +81,49 @@ export async function POST(request: NextRequest) {
           trading_money: p.Trading_money,
           trading_turnover: p.Trading_turnover,
           spread: p.spread,
-        }));
-        const { error } = await supabase.from('stock_prices').upsert(rows, { onConflict: 'stock_id,date' });
-        if (error) errors.push(`stock_prices: ${error.message}`);
-      }
+        })),
+        'stock_id,date',
+      );
+    }
 
-      // Fetch today's PER
-      const perData = await fetchStockPER(stockId, today);
-      if (perData.length > 0) {
-        const rows = perData.map((p) => ({
+    // 2. PER / PBR / Dividend yield
+    const perData = filterSynced(await fetchMarketPER(today));
+    if (perData.length > 0) {
+      await batchUpsert(
+        'stock_per',
+        perData.map((p) => ({
           stock_id: p.stock_id,
           date: p.date,
           per: p.PER,
           pbr: p.PBR,
           dividend_yield: p.dividend_yield,
-        }));
-        const { error } = await supabase.from('stock_per').upsert(rows, { onConflict: 'stock_id,date' });
-        if (error) errors.push(`stock_per: ${error.message}`);
-      }
+        })),
+        'stock_id,date',
+      );
+    }
 
-      // Fetch today's institutional
-      const institutional = await fetchInstitutional(stockId, today);
-      if (institutional.length > 0) {
-        const rows = institutional.map((i) => ({
+    // 3. Institutional investors
+    const institutional = filterSynced(await fetchMarketInstitutional(today));
+    if (institutional.length > 0) {
+      await batchUpsert(
+        'institutional_investors',
+        institutional.map((i) => ({
           stock_id: i.stock_id,
           date: i.date,
           investor_name: i.name,
           buy: i.buy,
           sell: i.sell,
-        }));
-        const { error } = await supabase
-          .from('institutional_investors')
-          .upsert(rows, { onConflict: 'stock_id,date,investor_name' });
-        if (error) errors.push(`institutional_investors: ${error.message}`);
-      }
+        })),
+        'stock_id,date,investor_name',
+      );
+    }
 
-      // Fetch today's margin
-      const margin = await fetchMarginTrading(stockId, today);
-      if (margin.length > 0) {
-        const rows = margin.map((m) => ({
+    // 4. Margin trading
+    const margin = filterSynced(await fetchMarketMarginTrading(today));
+    if (margin.length > 0) {
+      await batchUpsert(
+        'margin_trading',
+        margin.map((m) => ({
           stock_id: m.stock_id,
           date: m.date,
           margin_purchase_buy: m.MarginPurchaseBuy,
@@ -106,102 +136,112 @@ export async function POST(request: NextRequest) {
           short_sale_cash_repayment: m.ShortSaleCashRepayment,
           short_sale_yesterday_balance: m.ShortSaleYesterdayBalance,
           short_sale_today_balance: m.ShortSaleTodayBalance,
-        }));
-        const { error } = await supabase.from('margin_trading').upsert(rows, { onConflict: 'stock_id,date' });
-        if (error) errors.push(`margin_trading: ${error.message}`);
-      }
+        })),
+        'stock_id,date',
+      );
+    }
 
-      // Fetch today's foreign shareholding
-      const shareholding = await fetchShareholding(stockId, today);
-      if (shareholding.length > 0) {
-        const rows = shareholding.map((s) => ({
+    // 5. Foreign shareholding
+    const shareholding = filterSynced(await fetchMarketShareholding(today));
+    if (shareholding.length > 0) {
+      await batchUpsert(
+        'foreign_shareholding',
+        shareholding.map((s) => ({
           stock_id: s.stock_id,
           date: s.date,
           foreign_holding_shares: s.ForeignInvestmentSharesHolding,
           foreign_holding_percentage: s.ForeignInvestmentShareholdingRatio,
-        }));
-        const { error } = await supabase.from('foreign_shareholding').upsert(rows, { onConflict: 'stock_id,date' });
-        if (error) errors.push(`foreign_shareholding: ${error.message}`);
-      }
+        })),
+        'stock_id,date',
+      );
+    }
 
-      // Fetch monthly revenue
-      const revenue = await fetchMonthRevenue(stockId, today);
-      if (revenue.length > 0) {
-        const rows = revenue.map((r) => ({
+    // 6. Monthly revenue
+    const revenue = filterSynced(await fetchMarketMonthRevenue(today));
+    if (revenue.length > 0) {
+      await batchUpsert(
+        'monthly_revenue',
+        revenue.map((r) => ({
           stock_id: r.stock_id,
           date: r.date,
           revenue_year: r.revenue_year,
           revenue_month: r.revenue_month,
           revenue: r.revenue,
-        }));
-        const { error } = await supabase
-          .from('monthly_revenue')
-          .upsert(rows, { onConflict: 'stock_id,revenue_year,revenue_month' });
-        if (error) errors.push(`monthly_revenue: ${error.message}`);
-      }
+        })),
+        'stock_id,revenue_year,revenue_month',
+      );
+    }
 
-      // Fetch financial statements (income, balance sheet, cash flow)
-      const [income, balance, cashflow] = await Promise.all([
-        fetchFinancialStatements(stockId, today),
-        fetchBalanceSheet(stockId, today),
-        fetchCashFlow(stockId, today),
-      ]);
-      const finRows = [
-        ...income.map((f) => ({ stock_id: f.stock_id, date: f.date, statement_type: 'income' as const, item_name: f.type, value: f.value })),
-        ...balance.map((f) => ({ stock_id: f.stock_id, date: f.date, statement_type: 'balance_sheet' as const, item_name: f.type, value: f.value })),
-        ...cashflow.map((f) => ({ stock_id: f.stock_id, date: f.date, statement_type: 'cash_flow' as const, item_name: f.type, value: f.value })),
-      ];
-      if (finRows.length > 0) {
-        const { error } = await supabase
-          .from('financial_statements')
-          .upsert(finRows, { onConflict: 'stock_id,date,statement_type,item_name' });
-        if (error) errors.push(`financial_statements: ${error.message}`);
-      }
+    // 7. Financial statements (income, balance sheet, cash flow — parallel)
+    const [income, balance, cashflow] = await Promise.all([
+      fetchMarketFinancialStatements(today),
+      fetchMarketBalanceSheet(today),
+      fetchMarketCashFlow(today),
+    ]);
+    const finRows = [
+      ...filterSynced(income).map((f) => ({
+        stock_id: f.stock_id, date: f.date, statement_type: 'income' as const, item_name: f.type, value: f.value,
+      })),
+      ...filterSynced(balance).map((f) => ({
+        stock_id: f.stock_id, date: f.date, statement_type: 'balance_sheet' as const, item_name: f.type, value: f.value,
+      })),
+      ...filterSynced(cashflow).map((f) => ({
+        stock_id: f.stock_id, date: f.date, statement_type: 'cash_flow' as const, item_name: f.type, value: f.value,
+      })),
+    ];
+    if (finRows.length > 0) {
+      await batchUpsert('financial_statements', finRows, 'stock_id,date,statement_type,item_name');
+    }
 
-      // Fetch dividends
-      const dividends = await fetchDividends(stockId, today);
-      if (dividends.length > 0) {
-        const rows = dividends.map((d) => ({
+    // 8. Dividends
+    const dividends = filterSynced(await fetchMarketDividends(today));
+    if (dividends.length > 0) {
+      await batchUpsert(
+        'dividends',
+        dividends.map((d) => ({
           stock_id: d.stock_id,
           date: d.date,
           year: new Date(d.date).getFullYear(),
           cash_dividend: d.CashEarningsDistribution + d.CashStatutorySurplus,
           stock_dividend: d.StockEarningsDistribution + d.StockStatutorySurplus,
-        }));
-        const { error } = await supabase.from('dividends').upsert(rows, { onConflict: 'stock_id,date' });
-        if (error) errors.push(`dividends: ${error.message}`);
-      }
+        })),
+        'stock_id,date',
+      );
+    }
 
-      // Fetch today's news
-      const news = await fetchNews(stockId, today);
-      if (news.length > 0) {
-        const rows = news.map((n) => ({
+    // 9. News
+    const news = filterSynced(await fetchMarketNews(today));
+    if (news.length > 0) {
+      await batchUpsert(
+        'stock_news',
+        news.map((n) => ({
           stock_id: n.stock_id,
           date: n.date,
           title: n.title,
           description: n.description,
           link: n.link,
           source: n.source,
-        }));
-        const { error } = await supabase
-          .from('stock_news')
-          .upsert(rows, { onConflict: 'stock_id,date,title' });
-        if (error) errors.push(`stock_news: ${error.message}`);
-      }
-
-      results.push({
-        stock_id: stockId,
-        status: errors.length > 0 ? 'partial' : 'ok',
-        errors: errors.length > 0 ? errors : undefined,
-      });
-    } catch (error) {
-      console.error(`Daily sync failed for ${stockId}:`, error);
-      results.push({ stock_id: stockId, status: 'failed' });
+        })),
+        'stock_id,date,title',
+      );
     }
+  } catch (error) {
+    console.error('Daily sync failed:', error);
+    return NextResponse.json(
+      {
+        message: 'Daily sync failed',
+        error: error instanceof Error ? error.message : String(error),
+        partial_counts: counts,
+        errors,
+      },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({
-    message: `Daily sync complete. ${results.filter((r) => r.status === 'ok').length}/${results.length} succeeded.`,
-    results,
+    message: `Daily sync complete. ${syncedIds.size} synced stocks. ${Object.keys(counts).length} datasets updated.`,
+    synced_stocks: syncedIds.size,
+    counts,
+    errors: errors.length > 0 ? errors : undefined,
   });
 }

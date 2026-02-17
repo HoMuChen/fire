@@ -14,15 +14,16 @@ import type {
 } from '@/types';
 
 const FINMIND_BASE_URL = 'https://api.finmindtrade.com/api/v4/data';
-const REQUEST_DELAY_MS = 6000; // 6 seconds between requests (10 req/min = 600/hr)
+const PER_STOCK_DELAY_MS = 6000; // 6s between per-stock requests (free tier: 10 req/min)
+const MARKET_DELAY_MS = 1000;    // 1s between full-market requests (paid tier: few calls total)
 
 let lastRequestTime = 0;
 
-async function rateLimitWait(): Promise<void> {
+async function rateLimitWait(delayMs: number): Promise<void> {
   const now = Date.now();
   const elapsed = now - lastRequestTime;
-  if (elapsed < REQUEST_DELAY_MS && lastRequestTime > 0) {
-    await sleep(REQUEST_DELAY_MS - elapsed);
+  if (elapsed < delayMs && lastRequestTime > 0) {
+    await sleep(delayMs - elapsed);
   }
   lastRequestTime = Date.now();
 }
@@ -44,9 +45,10 @@ export async function fetchFinMind<T>(
     data_id?: string;
     start_date?: string;
     end_date?: string;
-  } = {}
+  } = {},
+  options: { fullMarket?: boolean } = {}
 ): Promise<T[]> {
-  await rateLimitWait();
+  await rateLimitWait(options.fullMarket ? MARKET_DELAY_MS : PER_STOCK_DELAY_MS);
 
   const url = new URL(FINMIND_BASE_URL);
   url.searchParams.set('dataset', dataset);
@@ -81,7 +83,7 @@ export async function fetchFinMind<T>(
   return json.data;
 }
 
-// ===== Dataset-specific helpers =====
+// ===== Per-stock helpers (used by stock-init) =====
 
 export function fetchStockList() {
   return fetchFinMind<FinMindStockInfo>('TaiwanStockInfo');
@@ -163,4 +165,52 @@ export function fetchNews(stockId: string, startDate: string) {
     data_id: stockId,
     start_date: startDate,
   });
+}
+
+// ===== Full-market helpers (used by sync/daily, paid tier) =====
+
+const FM = { fullMarket: true };
+
+export function fetchMarketPrices(startDate: string, endDate?: string) {
+  return fetchFinMind<FinMindStockPrice>('TaiwanStockPrice', { start_date: startDate, end_date: endDate }, FM);
+}
+
+export function fetchMarketPER(startDate: string) {
+  return fetchFinMind<FinMindStockPER>('TaiwanStockPER', { start_date: startDate }, FM);
+}
+
+export function fetchMarketInstitutional(startDate: string) {
+  return fetchFinMind<FinMindInstitutionalInvestors>('TaiwanStockInstitutionalInvestorsBuySell', { start_date: startDate }, FM);
+}
+
+export function fetchMarketMarginTrading(startDate: string) {
+  return fetchFinMind<FinMindMarginData>('TaiwanStockMarginPurchaseShortSale', { start_date: startDate }, FM);
+}
+
+export function fetchMarketShareholding(startDate: string) {
+  return fetchFinMind<FinMindShareholding>('TaiwanStockShareholding', { start_date: startDate }, FM);
+}
+
+export function fetchMarketMonthRevenue(startDate: string) {
+  return fetchFinMind<FinMindMonthRevenue>('TaiwanStockMonthRevenue', { start_date: startDate }, FM);
+}
+
+export function fetchMarketFinancialStatements(startDate: string) {
+  return fetchFinMind<FinMindFinancialStatement>('TaiwanStockFinancialStatements', { start_date: startDate }, FM);
+}
+
+export function fetchMarketBalanceSheet(startDate: string) {
+  return fetchFinMind<FinMindFinancialStatement>('TaiwanStockBalanceSheet', { start_date: startDate }, FM);
+}
+
+export function fetchMarketCashFlow(startDate: string) {
+  return fetchFinMind<FinMindFinancialStatement>('TaiwanStockCashFlowsStatement', { start_date: startDate }, FM);
+}
+
+export function fetchMarketDividends(startDate: string) {
+  return fetchFinMind<FinMindDividend>('TaiwanStockDividend', { start_date: startDate }, FM);
+}
+
+export function fetchMarketNews(startDate: string) {
+  return fetchFinMind<FinMindStockNews>('TaiwanStockNews', { start_date: startDate }, FM);
 }
