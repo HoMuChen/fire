@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
 
     const wlIds = (watchlistStockIds ?? []).map((r) => r.stock_id);
 
+    // Priority 1: watchlist stocks that are pending
     if (wlIds.length > 0) {
       const { data } = await supabase
         .from('stocks')
@@ -92,8 +93,19 @@ export async function POST(request: NextRequest) {
       stock = data;
     }
 
+    // Priority 2: any pending stock
     if (!stock) {
-      return NextResponse.json({ message: 'No pending watchlist stocks to sync' });
+      const { data } = await supabase
+        .from('stocks')
+        .select('stock_id, stock_name')
+        .eq('sync_status', 'pending')
+        .limit(1)
+        .maybeSingle();
+      stock = data;
+    }
+
+    if (!stock) {
+      return NextResponse.json({ message: 'No pending stocks to sync' });
     }
   }
 
