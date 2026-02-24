@@ -25,15 +25,26 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
 
   const supabase = createAdminClient();
-  const today = formatDate(new Date());
+  const { searchParams } = new URL(request.url);
+  const today = searchParams.get('date') ?? formatDate(new Date());
 
   // Get all synced stock IDs for filtering full-market results
-  const { data: syncedStocks } = await supabase
-    .from('stocks')
-    .select('stock_id')
-    .eq('sync_status', 'synced');
+  const syncedStocks: { stock_id: string }[] = [];
+  const PAGE_SIZE = 1000;
+  let from = 0;
+  while (true) {
+    const { data } = await supabase
+      .from('stocks')
+      .select('stock_id')
+      .eq('sync_status', 'synced')
+      .range(from, from + PAGE_SIZE - 1);
+    if (!data || data.length === 0) break;
+    syncedStocks.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
 
-  if (!syncedStocks || syncedStocks.length === 0) {
+  if (syncedStocks.length === 0) {
     return NextResponse.json({ message: 'No synced stocks to update' });
   }
 
