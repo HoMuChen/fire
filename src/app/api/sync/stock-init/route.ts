@@ -39,11 +39,11 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
 
   const supabase = createAdminClient();
-  const startDate = getDateYearsAgo(2);
-  const endDate = formatDate(new Date());
+  const { searchParams } = new URL(request.url);
+  const startDate = searchParams.get('start_date') ?? getDateYearsAgo(2);
+  const endDate = searchParams.get('end_date') ?? formatDate(new Date());
 
   // Allow specifying a stock_id via query param or request body
-  const { searchParams } = new URL(request.url);
   let targetStockId = searchParams.get('stock_id');
 
   if (!targetStockId) {
