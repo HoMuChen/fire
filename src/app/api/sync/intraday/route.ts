@@ -3,7 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyCronSecret } from '@/lib/sync-auth';
-import { fetchAllRealtimeQuotes } from '@/lib/twse';
+import { fetchMarketPrices } from '@/lib/finmind';
+import { formatDate } from '@/lib/utils';
 
 export const maxDuration = 300;
 
@@ -14,15 +15,16 @@ export async function POST(request: NextRequest) {
   console.log('[intraday-sync] Starting intraday sync...');
 
   const supabase = createAdminClient();
+  const today = formatDate(new Date());
 
-  // Get all synced stocks with their type (twse/tpex) for TWSE API prefix
-  const syncedStocks: { stock_id: string; type: string | null }[] = [];
+  // Get all synced stock IDs for filtering
+  const syncedStocks: { stock_id: string }[] = [];
   const PAGE_SIZE = 1000;
   let from = 0;
   while (true) {
     const { data } = await supabase
       .from('stocks')
-      .select('stock_id, type')
+      .select('stock_id')
       .eq('sync_status', 'synced')
       .range(from, from + PAGE_SIZE - 1);
     if (!data || data.length === 0) break;
@@ -31,39 +33,36 @@ export async function POST(request: NextRequest) {
     from += PAGE_SIZE;
   }
 
-  if (!syncedStocks || syncedStocks.length === 0) {
+  if (syncedStocks.length === 0) {
     console.log('[intraday-sync] No synced stocks found, skipping.');
     return NextResponse.json({ message: 'No synced stocks to update' });
   }
 
-  console.log(`[intraday-sync] Found ${syncedStocks.length} synced stocks: ${syncedStocks.map((s) => s.stock_id).join(', ')}`);
+  const syncedIds = new Set(syncedStocks.map((s) => s.stock_id));
+  console.log(`[intraday-sync] Found ${syncedIds.size} synced stocks`);
 
   try {
-    const quotes = await fetchAllRealtimeQuotes(
-      syncedStocks.map((s) => ({ stock_id: s.stock_id, type: s.type ?? 'twse' })),
-    );
+    const allPrices = await fetchMarketPrices(today, today);
+    const prices = allPrices.filter((p) => syncedIds.has(p.stock_id));
 
-    console.log(`[intraday-sync] TWSE API returned ${quotes.length} quotes`);
+    console.log(`[intraday-sync] FinMind returned ${allPrices.length} total, ${prices.length} matched`);
 
-    if (quotes.length === 0) {
-      return NextResponse.json({ message: 'No quotes returned from TWSE API' });
+    if (prices.length === 0) {
+      return NextResponse.json({ message: 'No prices returned for synced stocks' });
     }
 
-    // Log sample quote for debugging
-    console.log('[intraday-sync] Sample quote:', JSON.stringify(quotes[0]));
-
     // Map to stock_prices rows
-    const rows = quotes.map((q) => ({
-      stock_id: q.stock_id,
-      date: q.date,
-      open: q.open,
-      high: q.high,
-      low: q.low,
-      close: q.close,
-      volume: q.volume,
-      spread: q.spread,
-      trading_money: null,
-      trading_turnover: null,
+    const rows = prices.map((p) => ({
+      stock_id: p.stock_id,
+      date: p.date,
+      open: p.open,
+      high: p.max,
+      low: p.min,
+      close: p.close,
+      volume: p.Trading_Volume,
+      trading_money: p.Trading_money,
+      trading_turnover: p.Trading_turnover,
+      spread: p.spread,
     }));
 
     // Batch upsert (1000 rows at a time)
@@ -80,12 +79,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[intraday-sync] Done. ${quotes.length} quotes upserted, ${errors.length} errors.`);
+    console.log(`[intraday-sync] Done. ${prices.length} prices upserted, ${errors.length} errors.`);
 
     return NextResponse.json({
-      message: `Intraday sync complete. ${quotes.length} quotes upserted.`,
-      quotes_count: quotes.length,
-      total_stocks: syncedStocks.length,
+      message: `Intraday sync complete. ${prices.length} prices upserted.`,
+      prices_count: prices.length,
+      total_stocks: syncedIds.size,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
